@@ -1,0 +1,1 @@
+export default function Practice(){return <main className="mx-auto max-w-3xl p-6"><div className="rounded-3xl bg-white p-8 shadow-sm"><div className="text-4xl">📚</div><h1 className="mt-3 text-2xl font-bold">Practice</h1><p className="mt-2 text-slate-600">下一階段加入題目引擎與孩子本機紀錄。</p></div></main>}

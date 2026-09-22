@@ -1,0 +1,1 @@
+export async function speakEnglish(text:string,audioMp3?:string){if(audioMp3){await new Audio(audioMp3).play();return}if(!('speechSynthesis'in window))throw new Error('Browser TTS is not supported.');window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=.9;window.speechSynthesis.speak(u)}
