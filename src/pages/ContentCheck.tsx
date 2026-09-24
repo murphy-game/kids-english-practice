@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { loadAppData } from '../services/dataLoader'
 import { checkAssets } from '../utils/assetChecker'
+import type {
+  AssetCheckResult,
+} from '../utils/assetChecker'
 import type { DataLoadResult } from '../types'
 
 function CopyButton({
@@ -33,32 +36,37 @@ function CopyButton({
 }
 
 export default function ContentCheck() {
-  const [data, setData] = useState<DataLoadResult | null>(null)
-  const [error, setError] = useState('')
+  const [data, setData] =
+    useState<DataLoadResult | null>(null)
+
+  const [assetResult, setAssetResult] =
+    useState<AssetCheckResult | null>(null)
+
+  const [error, setError] =
+    useState('')
 
   useEffect(() => {
-    loadAppData()
-      .then(setData)
-      .catch((err) => {
+    async function load() {
+      try {
+        const loadedData =
+          await loadAppData()
+
+        setData(loadedData)
+
+        const result =
+          await checkAssets(
+            loadedData.content,
+            loadedData.assets,
+          )
+
+        setAssetResult(result)
+      } catch (err) {
         setError(String(err))
-      })
+      }
+    }
+
+    load()
   }, [])
-
-  const stats = useMemo(() => {
-    if (!data) {
-      return null
-    }
-
-    const assetResult = checkAssets(data.content, data.assets)
-
-    return {
-      assets: assetResult,
-      lessons: data.lessons.length,
-      vocab: data.content.filter((item) => item.type === 'vocab').length,
-      sentence: data.content.filter((item) => item.type === 'sentence').length,
-      phonics: data.content.filter((item) => item.type === 'phonics').length,
-    }
-  }, [data])
 
   if (error) {
     return (
@@ -68,22 +76,44 @@ export default function ContentCheck() {
     )
   }
 
-  if (!data || !stats) {
+  if (!data || !assetResult) {
     return (
       <main className="p-6">
-        Loading...
+        Checking content and images...
       </main>
     )
   }
 
-  const emojiText = stats.assets.emojiSuggested
-    .map((item) => `${item.image_key} -> ${item.emoji}`)
-    .join('\n')
+  const lessons =
+    data.lessons.length
+
+  const vocab =
+    data.content.filter(
+      (item) => item.type === 'vocab',
+    ).length
+
+  const sentence =
+    data.content.filter(
+      (item) => item.type === 'sentence',
+    ).length
+
+  const phonics =
+    data.content.filter(
+      (item) => item.type === 'phonics',
+    ).length
+
+  const emojiText =
+    assetResult.emojiSuggested
+      .map(
+        (item) =>
+          `${item.image_key} -> ${item.emoji}`,
+      )
+      .join('\n')
 
   const missingText = [
     'Missing Vocabulary Images:',
     '',
-    ...stats.assets.missing,
+    ...assetResult.missing,
     '',
     'Generation instruction:',
     'Create child-friendly vocabulary illustrations.',
@@ -95,15 +125,47 @@ export default function ContentCheck() {
   ].join('\n')
 
   const cards = [
-    { label: 'Lessons', value: stats.lessons },
-    { label: 'Vocabulary', value: stats.vocab },
-    { label: 'Sentence', value: stats.sentence },
-    { label: 'Phonics', value: stats.phonics },
-    { label: 'Image keys', value: stats.assets.requiredKeys.length },
-    { label: 'Emoji approved', value: stats.assets.emojiApproved.length },
-    { label: 'Emoji suggested', value: stats.assets.emojiSuggested.length },
-    { label: 'Image ready', value: stats.assets.imageReady.length },
-    { label: 'Missing', value: stats.assets.missing.length },
+    {
+      label: 'Lessons',
+      value: lessons,
+    },
+    {
+      label: 'Vocabulary',
+      value: vocab,
+    },
+    {
+      label: 'Sentence',
+      value: sentence,
+    },
+    {
+      label: 'Phonics',
+      value: phonics,
+    },
+    {
+      label: 'Image keys',
+      value:
+        assetResult.requiredKeys.length,
+    },
+    {
+      label: 'Emoji approved',
+      value:
+        assetResult.emojiApproved.length,
+    },
+    {
+      label: 'Emoji suggested',
+      value:
+        assetResult.emojiSuggested.length,
+    },
+    {
+      label: 'Image ready',
+      value:
+        assetResult.imageReady.length,
+    },
+    {
+      label: 'Missing',
+      value:
+        assetResult.missing.length,
+    },
   ]
 
   return (
@@ -122,7 +184,9 @@ export default function ContentCheck() {
 
         <p className="mt-1 text-sm text-slate-500">
           Last loaded:{' '}
-          {new Date(data.loadedAt).toLocaleString()}
+          {new Date(
+            data.loadedAt,
+          ).toLocaleString()}
         </p>
       </section>
 
@@ -152,24 +216,33 @@ export default function ContentCheck() {
 
             <CopyButton
               label="Copy Emoji Suggestions"
-              text={emojiText || 'No emoji suggestions'}
+              text={
+                emojiText ||
+                'No emoji suggestions'
+              }
             />
           </div>
 
           <div className="mt-4 max-h-96 overflow-auto">
-            {stats.assets.emojiSuggested.length > 0 ? (
-              stats.assets.emojiSuggested.map((item) => (
-                <div
-                  key={item.image_key}
-                  className="flex items-center justify-between border-b py-2"
-                >
-                  <span>{item.image_key}</span>
+            {assetResult
+              .emojiSuggested.length >
+            0 ? (
+              assetResult.emojiSuggested.map(
+                (item) => (
+                  <div
+                    key={item.image_key}
+                    className="flex items-center justify-between border-b py-2"
+                  >
+                    <span>
+                      {item.image_key}
+                    </span>
 
-                  <span className="text-2xl">
-                    {item.emoji}
-                  </span>
-                </div>
-              ))
+                    <span className="text-2xl">
+                      {item.emoji}
+                    </span>
+                  </div>
+                ),
+              )
             ) : (
               <p className="text-slate-500">
                 No suggestions.
@@ -191,18 +264,22 @@ export default function ContentCheck() {
           </div>
 
           <div className="mt-4 max-h-96 overflow-auto">
-            {stats.assets.missing.length > 0 ? (
-              stats.assets.missing.map((imageKey) => (
-                <div
-                  key={imageKey}
-                  className="border-b py-2"
-                >
-                  {imageKey}
-                </div>
-              ))
+            {assetResult.missing.length >
+            0 ? (
+              assetResult.missing.map(
+                (imageKey) => (
+                  <div
+                    key={imageKey}
+                    className="border-b py-2"
+                  >
+                    {imageKey}
+                  </div>
+                ),
+              )
             ) : (
               <p className="text-emerald-600">
-                All required image keys have a usable source.
+                All required image keys
+                have a usable source.
               </p>
             )}
           </div>
