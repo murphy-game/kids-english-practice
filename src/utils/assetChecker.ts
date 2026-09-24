@@ -22,7 +22,6 @@ export const EMOJI_SUGGESTIONS: Record<string, string> = {
   horse: '🐴',
   hand: '✋',
   insect: '🐞',
-  jet: '✈️',
   jellyfish: '🪼',
   kangaroo: '🦘',
   koala: '🐨',
@@ -31,11 +30,9 @@ export const EMOJI_SUGGESTIONS: Record<string, string> = {
   money: '💰',
   nuts: '🥜',
   octopus: '🐙',
-  ox: '🐂',
   olive: '🫒',
   pig: '🐷',
   pizza: '🍕',
-  queen: '👑',
   rabbit: '🐰',
   rice: '🍚',
   ear: '👂',
@@ -66,7 +63,6 @@ export const EMOJI_SUGGESTIONS: Record<string, string> = {
   skirt: '👗',
   ski: '🎿',
   smile: '😊',
-  smoke: '💨',
   snail: '🐌',
   snow: '❄️',
   swan: '🦢',
@@ -78,7 +74,6 @@ export const EMOJI_SUGGESTIONS: Record<string, string> = {
   cloud: '☁️',
   clown: '🤡',
   glove: '🧤',
-  glass: '🥛',
   globe: '🌍',
   flag: '🚩',
   fly: '🪰',
@@ -101,10 +96,37 @@ export interface AssetCheckResult {
   missing: string[]
 }
 
-export function checkAssets(
+function getAssetBasePath() {
+  return `${import.meta.env.BASE_URL}assets/images/vocabulary/`
+}
+
+async function fileExists(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      cache: 'no-store',
+    })
+
+    if (response.ok) {
+      return true
+    }
+
+    // 某些靜態主機可能不支援 HEAD，改用 GET 再試一次
+    const fallbackResponse = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+    })
+
+    return fallbackResponse.ok
+  } catch {
+    return false
+  }
+}
+
+export async function checkAssets(
   content: ContentItem[],
   assets: Asset[],
-): AssetCheckResult {
+): Promise<AssetCheckResult> {
   const requiredKeys = [
     ...new Set(
       content
@@ -132,10 +154,12 @@ export function checkAssets(
   const imageReady: Asset[] = []
   const missing: string[] = []
 
+  const assetBasePath = getAssetBasePath()
+
   for (const key of requiredKeys) {
     const asset = assetMap.get(key)
 
-    // 已明確核准 Emoji
+    // 已核准 Emoji
     if (
       asset?.display_type === 'emoji' &&
       asset.status === 'approved' &&
@@ -145,14 +169,27 @@ export function checkAssets(
       continue
     }
 
-    // 已明確指定使用圖片
-    // 不再提供 Emoji suggestion
+    // 已指定 image 類型
     if (asset?.display_type === 'image') {
+      const imageFile =
+        asset.image_file ||
+        `${key}.png`
+
+      const imageUrl =
+        `${assetBasePath}${imageFile}`
+
+      const exists =
+        await fileExists(imageUrl)
+
       if (
         asset.status === 'approved' &&
-        asset.image_file
+        imageFile &&
+        exists
       ) {
-        imageReady.push(asset)
+        imageReady.push({
+          ...asset,
+          image_file: imageFile,
+        })
       } else {
         missing.push(key)
       }
@@ -160,7 +197,7 @@ export function checkAssets(
       continue
     }
 
-    // ASSETS 尚未設定時，才提供 Emoji suggestion
+    // 尚未設定 ASSETS 時，才給 Emoji suggestion
     const suggestion =
       EMOJI_SUGGESTIONS[key]
 
