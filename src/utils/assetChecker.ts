@@ -91,33 +91,39 @@ export const EMOJI_SUGGESTIONS: Record<string, string> = {
 export interface AssetCheckResult {
   requiredKeys: string[]
   emojiApproved: Asset[]
-  emojiSuggested: { image_key: string; emoji: string }[]
+  emojiSuggested: {
+    image_key: string
+    emoji: string
+  }[]
   imageReady: Asset[]
   missing: string[]
 }
 
-function getAssetBasePath() {
-  return `${import.meta.env.BASE_URL}assets/images/vocabulary/`
-}
+/*
+ * GitHub Pages 網址：
+ * https://murphy-game.github.io/kids-english-practice/
+ *
+ * vocabulary 圖片實際位置：
+ * /kids-english-practice/assets/images/vocabulary/
+ */
+const ASSET_BASE_PATH =
+  '/kids-english-practice/assets/images/vocabulary/'
 
-async function fileExists(url: string): Promise<boolean> {
+async function fileExists(
+  url: string,
+): Promise<boolean> {
   try {
-    const response = await fetch(url, {
-      method: 'HEAD',
-      cache: 'no-store',
-    })
+    // 加時間戳，避免瀏覽器拿到舊快取
+    const separator = url.includes('?') ? '&' : '?'
+    const checkUrl =
+      `${url}${separator}check=${Date.now()}`
 
-    if (response.ok) {
-      return true
-    }
-
-    // 某些靜態主機可能不支援 HEAD，改用 GET 再試一次
-    const fallbackResponse = await fetch(url, {
+    const response = await fetch(checkUrl, {
       method: 'GET',
       cache: 'no-store',
     })
 
-    return fallbackResponse.ok
+    return response.ok
   } catch {
     return false
   }
@@ -147,19 +153,19 @@ export async function checkAssets(
   )
 
   const emojiApproved: Asset[] = []
+
   const emojiSuggested: {
     image_key: string
     emoji: string
   }[] = []
+
   const imageReady: Asset[] = []
   const missing: string[] = []
-
-  const assetBasePath = getAssetBasePath()
 
   for (const key of requiredKeys) {
     const asset = assetMap.get(key)
 
-    // 已核准 Emoji
+    // 1. 已核准 Emoji
     if (
       asset?.display_type === 'emoji' &&
       asset.status === 'approved' &&
@@ -169,21 +175,27 @@ export async function checkAssets(
       continue
     }
 
-    // 已指定 image 類型
+    // 2. Sheet 指定為圖片
     if (asset?.display_type === 'image') {
+      // 若 Sheet 沒寫 image_file，
+      // 自動使用 image_key.png
       const imageFile =
-        asset.image_file ||
+        asset.image_file?.trim() ||
         `${key}.png`
 
       const imageUrl =
-        `${assetBasePath}${imageFile}`
+        `${ASSET_BASE_PATH}${encodeURIComponent(
+          imageFile,
+        )}`
 
       const exists =
         await fileExists(imageUrl)
 
+      // 必須同時：
+      // A. Sheet = approved
+      // B. GitHub Pages 實際找得到圖片
       if (
         asset.status === 'approved' &&
-        imageFile &&
         exists
       ) {
         imageReady.push({
@@ -197,7 +209,7 @@ export async function checkAssets(
       continue
     }
 
-    // 尚未設定 ASSETS 時，才給 Emoji suggestion
+    // 3. Sheet 尚未指定時才提出 Emoji 建議
     const suggestion =
       EMOJI_SUGGESTIONS[key]
 
