@@ -12,6 +12,7 @@ type QuestionType =
   | 'image_to_word'
   | 'audio_to_word'
   | 'word_to_meaning'
+  | 'missing_letter'
 
 type Question = {
   id: string
@@ -20,10 +21,14 @@ type Question = {
   options: string[]
   correctAnswer: string
   asset?: Asset
+  maskedWord?: string
 }
 
 const IMAGE_BASE_PATH =
   '/kids-english-practice/assets/images/vocabulary/'
+
+const LETTER_POOL =
+  'abcdefghijklmnopqrstuvwxyz'.split('')
 
 function shuffle<T>(items: T[]): T[] {
   return [...items].sort(() => Math.random() - 0.5)
@@ -107,6 +112,61 @@ function createChineseOptions(
   ])
 }
 
+function createMissingLetterQuestion(
+  item: ContentItem,
+) {
+  const word = item.english.toLowerCase()
+
+  const validIndexes = word
+    .split('')
+    .map((char, index) => ({
+      char,
+      index,
+    }))
+    .filter(({ char }) =>
+      /^[a-z]$/.test(char),
+    )
+
+  if (validIndexes.length === 0) {
+    return null
+  }
+
+  const picked =
+    validIndexes[
+      Math.floor(
+        Math.random() *
+          validIndexes.length,
+      )
+    ]
+
+  const missingLetter = picked.char
+
+  const maskedWord = word
+    .split('')
+    .map((char, index) =>
+      index === picked.index
+        ? '_'
+        : char,
+    )
+    .join('')
+
+  const wrongLetters = shuffle(
+    LETTER_POOL.filter(
+      (letter) =>
+        letter !== missingLetter,
+    ),
+  ).slice(0, 3)
+
+  return {
+    maskedWord,
+    missingLetter,
+    options: shuffle([
+      missingLetter,
+      ...wrongLetters,
+    ]),
+  }
+}
+
 function hasUsableVisual(
   item: ContentItem,
   assetMap: Map<string, Asset>,
@@ -156,11 +216,12 @@ function buildQuestions(
     recommendedTypes.filter(
       (type) =>
         type === 'image_to_word' ||
-        type === 'audio_to_word',
-    )
+        type === 'audio_to_word' ||
+        type === 'missing_letter',
+    ) as QuestionType[]
 
   const availableTypes: QuestionType[] = [
-    ...supportedRecommended as QuestionType[],
+    ...supportedRecommended,
     'word_to_meaning',
   ]
 
@@ -183,7 +244,10 @@ function buildQuestions(
 
       if (
         type === 'image_to_word' &&
-        !hasUsableVisual(item, assetMap)
+        !hasUsableVisual(
+          item,
+          assetMap,
+        )
       ) {
         type = 'audio_to_word'
       }
@@ -194,12 +258,16 @@ function buildQuestions(
           type,
           item,
           asset:
-            assetMap.get(item.image_key),
-          correctAnswer: item.english,
-          options: createEnglishOptions(
-            item,
-            vocab,
-          ),
+            assetMap.get(
+              item.image_key,
+            ),
+          correctAnswer:
+            item.english,
+          options:
+            createEnglishOptions(
+              item,
+              vocab,
+            ),
         }
       }
 
@@ -208,11 +276,34 @@ function buildQuestions(
           id: `${item.item_id}-audio`,
           type,
           item,
-          correctAnswer: item.english,
-          options: createEnglishOptions(
+          correctAnswer:
+            item.english,
+          options:
+            createEnglishOptions(
+              item,
+              vocab,
+            ),
+        }
+      }
+
+      if (type === 'missing_letter') {
+        const missing =
+          createMissingLetterQuestion(
             item,
-            vocab,
-          ),
+          )
+
+        if (missing) {
+          return {
+            id: `${item.item_id}-missing`,
+            type,
+            item,
+            correctAnswer:
+              missing.missingLetter,
+            options:
+              missing.options,
+            maskedWord:
+              missing.maskedWord,
+          }
         }
       }
 
@@ -220,11 +311,13 @@ function buildQuestions(
         id: `${item.item_id}-meaning`,
         type: 'word_to_meaning',
         item,
-        correctAnswer: item.chinese,
-        options: createChineseOptions(
-          item,
-          vocab,
-        ),
+        correctAnswer:
+          item.chinese,
+        options:
+          createChineseOptions(
+            item,
+            vocab,
+          ),
       }
     },
   )
@@ -241,7 +334,9 @@ function speakEnglish(text: string) {
   window.speechSynthesis.cancel()
 
   const utterance =
-    new SpeechSynthesisUtterance(text)
+    new SpeechSynthesisUtterance(
+      text,
+    )
 
   utterance.lang = 'en-US'
   utterance.rate = 0.85
@@ -264,8 +359,10 @@ export default function Practice() {
   const lessonId =
     params.get('lesson') ?? ''
 
-  const [questions, setQuestions] =
-    useState<Question[]>([])
+  const [
+    questions,
+    setQuestions,
+  ] = useState<Question[]>([])
 
   const [
     currentIndex,
@@ -275,7 +372,10 @@ export default function Practice() {
   const [
     selected,
     setSelected,
-  ] = useState<string | null>(null)
+  ] =
+    useState<string | null>(
+      null,
+    )
 
   const [score, setScore] =
     useState(0)
@@ -381,7 +481,8 @@ export default function Practice() {
       currentQuestion.correctAnswer
     ) {
       setScore(
-        (value) => value + 1,
+        (value) =>
+          value + 1,
       )
     }
   }
@@ -398,7 +499,8 @@ export default function Practice() {
     setSelected(null)
 
     setCurrentIndex(
-      (value) => value + 1,
+      (value) =>
+        value + 1,
     )
   }
 
@@ -562,7 +664,6 @@ export default function Practice() {
       </section>
 
       <section className="rounded-3xl bg-white p-8 shadow-sm">
-
         {currentQuestion.type ===
           'image_to_word' && (
           <>
@@ -640,6 +741,43 @@ export default function Practice() {
           </>
         )}
 
+        {currentQuestion.type ===
+          'missing_letter' && (
+          <>
+            <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
+              Choose the missing letter
+            </p>
+
+            <div className="mt-5 text-center">
+              <div className="text-5xl font-bold tracking-[0.18em] text-slate-800">
+                {
+                  currentQuestion
+                    .maskedWord
+                }
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  speakEnglish(
+                    currentQuestion
+                      .item
+                      .english,
+                  )
+                }
+                className="mt-4 rounded-full bg-sky-50 px-4 py-3 text-3xl hover:bg-sky-100"
+                aria-label="Play pronunciation"
+              >
+                🔊
+              </button>
+
+              <p className="mt-2 text-sm text-slate-400">
+                Listen if you need help
+              </p>
+            </div>
+          </>
+        )}
+
         <div className="mt-8 grid gap-3 sm:grid-cols-2">
           {currentQuestion.options.map(
             (option) => {
@@ -688,7 +826,10 @@ export default function Practice() {
                     className
                   }
                 >
-                  {option}
+                  {currentQuestion.type ===
+                  'missing_letter'
+                    ? option.toUpperCase()
+                    : option}
                 </button>
               )
             },
@@ -708,8 +849,24 @@ export default function Practice() {
               {selected ===
               currentQuestion.correctAnswer
                 ? 'Correct! 🎉'
-                : `Answer: ${currentQuestion.correctAnswer}`}
+                : currentQuestion.type ===
+                    'missing_letter'
+                  ? `Answer: ${currentQuestion.correctAnswer.toUpperCase()}`
+                  : `Answer: ${currentQuestion.correctAnswer}`}
             </p>
+
+            {currentQuestion.type ===
+              'missing_letter' &&
+              selected !==
+                currentQuestion.correctAnswer && (
+                <p className="mt-2 text-lg font-semibold text-slate-600">
+                  {
+                    currentQuestion
+                      .item
+                      .english
+                  }
+                </p>
+              )}
 
             <button
               type="button"
