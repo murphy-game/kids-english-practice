@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadAppData } from '../services/dataLoader'
-
-type LessonOption = {
-  lesson_id: string
-  title: string
-  lesson_no: number
-}
+import type { Lesson } from '../types'
 
 export default function Home() {
   const navigate = useNavigate()
 
-  const [lessons, setLessons] = useState<LessonOption[]>([])
+  const [lessons, setLessons] = useState<Lesson[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -20,42 +15,13 @@ export default function Home() {
       try {
         const data = await loadAppData()
 
-        const lessonOptions: LessonOption[] =
-          data.lessons.map((lesson, index) => {
-            const rawTitle = lesson.title
-            const rawLessonNo = lesson.lesson_no
+        const activeLessons = data.lessons.filter(
+          (lesson) =>
+            lesson.active === true ||
+            String(lesson.active).toLowerCase() === 'true',
+        )
 
-            const title =
-              typeof rawTitle === 'string' &&
-              rawTitle.trim()
-                ? rawTitle.trim()
-                : `Lesson ${index + 1}`
-
-            let lessonNo = index + 1
-
-            if (typeof rawLessonNo === 'number') {
-              lessonNo = rawLessonNo
-            } else if (
-              typeof rawLessonNo === 'string'
-            ) {
-              const parsed =
-                Number(rawLessonNo)
-
-              if (!Number.isNaN(parsed)) {
-                lessonNo = parsed
-              }
-            }
-
-            return {
-              lesson_id: String(
-                lesson.lesson_id,
-              ),
-              title,
-              lesson_no: lessonNo,
-            }
-          })
-
-        setLessons(lessonOptions)
+        setLessons(activeLessons)
       } catch (err) {
         setError(String(err))
       } finally {
@@ -66,9 +32,7 @@ export default function Home() {
     load()
   }, [])
 
-  function startLesson(
-    lessonId: string,
-  ) {
+  function startLesson(lessonId: string) {
     navigate(
       `/practice?lesson=${encodeURIComponent(
         lessonId,
@@ -112,8 +76,7 @@ export default function Home() {
         </h1>
 
         <p className="mt-2 text-slate-500">
-          Pick a lesson and practice a
-          little every day.
+          Pick a lesson and practice a little every day.
         </p>
       </section>
 
@@ -128,19 +91,24 @@ export default function Home() {
               key={lesson.lesson_id}
               type="button"
               onClick={() =>
-                startLesson(
-                  lesson.lesson_id,
-                )
+                startLesson(lesson.lesson_id)
               }
               className="rounded-2xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
             >
               <div className="text-sm font-medium text-slate-400">
-                Lesson{' '}
-                {lesson.lesson_no}
+                {lesson.course}
               </div>
 
               <div className="mt-1 text-xl font-bold text-slate-800">
-                {lesson.title}
+                {lesson.lesson}
+              </div>
+
+              <div className="mt-2 text-sm text-slate-600">
+                {lesson.topic}
+              </div>
+
+              <div className="mt-2 text-xs text-slate-400">
+                Pages {lesson.page}
               </div>
 
               <div className="mt-4 text-sm font-semibold text-emerald-600">
