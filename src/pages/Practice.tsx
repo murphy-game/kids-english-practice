@@ -36,7 +36,8 @@ export default function Practice() {
             item.lesson_id === lessonId &&
             item.type === 'vocab' &&
             item.english?.trim() &&
-            item.chinese?.trim(),
+            item.chinese?.trim() &&
+            !item.chinese.includes('人名'),
         )
 
         if (vocab.length === 0) {
