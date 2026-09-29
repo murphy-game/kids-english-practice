@@ -4,8 +4,8 @@ import { loadAppData } from '../services/dataLoader'
 
 type LessonOption = {
   lesson_id: string
-  title?: string
-  lesson_no?: string | number
+  title: string
+  lesson_no: number
 }
 
 export default function Home() {
@@ -20,19 +20,42 @@ export default function Home() {
       try {
         const data = await loadAppData()
 
-        setLessons(
-          data.lessons.map((lesson) => ({
-            lesson_id: lesson.lesson_id,
-            title:
-              'title' in lesson && typeof lesson.title === 'string'
-                ? lesson.title
-                : undefined,
-            lesson_no:
-              'lesson_no' in lesson
-                ? lesson.lesson_no
-                : undefined,
-          })),
-        )
+        const lessonOptions: LessonOption[] =
+          data.lessons.map((lesson, index) => {
+            const rawTitle = lesson.title
+            const rawLessonNo = lesson.lesson_no
+
+            const title =
+              typeof rawTitle === 'string' &&
+              rawTitle.trim()
+                ? rawTitle.trim()
+                : `Lesson ${index + 1}`
+
+            let lessonNo = index + 1
+
+            if (typeof rawLessonNo === 'number') {
+              lessonNo = rawLessonNo
+            } else if (
+              typeof rawLessonNo === 'string'
+            ) {
+              const parsed =
+                Number(rawLessonNo)
+
+              if (!Number.isNaN(parsed)) {
+                lessonNo = parsed
+              }
+            }
+
+            return {
+              lesson_id: String(
+                lesson.lesson_id,
+              ),
+              title,
+              lesson_no: lessonNo,
+            }
+          })
+
+        setLessons(lessonOptions)
       } catch (err) {
         setError(String(err))
       } finally {
@@ -43,8 +66,14 @@ export default function Home() {
     load()
   }, [])
 
-  function startLesson(lessonId: string) {
-    navigate(`/practice?lesson=${encodeURIComponent(lessonId)}`)
+  function startLesson(
+    lessonId: string,
+  ) {
+    navigate(
+      `/practice?lesson=${encodeURIComponent(
+        lessonId,
+      )}`,
+    )
   }
 
   if (loading) {
@@ -83,7 +112,8 @@ export default function Home() {
         </h1>
 
         <p className="mt-2 text-slate-500">
-          Pick a lesson and practice a little every day.
+          Pick a lesson and practice a
+          little every day.
         </p>
       </section>
 
@@ -93,38 +123,31 @@ export default function Home() {
         </h2>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {lessons.map((lesson, index) => {
-            const lessonNumber =
-              lesson.lesson_no ??
-              index + 1
+          {lessons.map((lesson) => (
+            <button
+              key={lesson.lesson_id}
+              type="button"
+              onClick={() =>
+                startLesson(
+                  lesson.lesson_id,
+                )
+              }
+              className="rounded-2xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+            >
+              <div className="text-sm font-medium text-slate-400">
+                Lesson{' '}
+                {lesson.lesson_no}
+              </div>
 
-            const displayTitle =
-              lesson.title?.trim() ||
-              `Lesson ${lessonNumber}`
+              <div className="mt-1 text-xl font-bold text-slate-800">
+                {lesson.title}
+              </div>
 
-            return (
-              <button
-                key={lesson.lesson_id}
-                type="button"
-                onClick={() =>
-                  startLesson(lesson.lesson_id)
-                }
-                className="rounded-2xl bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-              >
-                <div className="text-sm font-medium text-slate-400">
-                  Lesson {lessonNumber}
-                </div>
-
-                <div className="mt-1 text-xl font-bold text-slate-800">
-                  {displayTitle}
-                </div>
-
-                <div className="mt-4 text-sm font-semibold text-emerald-600">
-                  Start practice →
-                </div>
-              </button>
-            )
-          })}
+              <div className="mt-4 text-sm font-semibold text-emerald-600">
+                Start practice →
+              </div>
+            </button>
+          ))}
         </div>
       </section>
     </main>
