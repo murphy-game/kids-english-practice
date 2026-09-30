@@ -24,10 +24,17 @@ type QuestionType =
   | 'sentence_listen_choose'
   | 'sentence_fill_blank'
   | 'sentence_choose_response'
-  | 'phonics_choose_word'
-  | 'phonics_beginning_sound'
+  | 'phonics_image_initial_letter'
+  | 'phonics_audio_initial_letter'
+  | 'phonics_missing_initial_letter'
+  | 'phonics_letter_case_match'
+  | 'phonics_audio_vowel'
   | 'phonics_missing_vowel'
-  | 'phonics_choose_blend'
+  | 'phonics_cvc_build_word'
+  | 'phonics_image_blend'
+  | 'phonics_audio_blend'
+  | 'phonics_missing_blend'
+  | 'phonics_same_initial_blend'
 
 type VisualOption = {
   key: string
@@ -820,163 +827,331 @@ function makeMaskedVowelWord(word: string) {
   }
 }
 
+function firstVowel(word: string) {
+  const lower = word.toLowerCase()
+  const index = lower
+    .split('')
+    .findIndex((char) => VOWELS.includes(char))
+
+  if (index < 0) return null
+
+  return {
+    vowel: lower[index],
+    masked: lower
+      .split('')
+      .map((char, i) => (i === index ? '_' : char))
+      .join(''),
+  }
+}
+
+function getWordAsset(
+  word: string,
+  vocab: ContentItem[],
+  assetMap: Map<string, Asset>,
+) {
+  const item = vocab.find(
+    (v) => v.english.toLowerCase() === word.toLowerCase(),
+  )
+  if (!item) return undefined
+  return getUsableAsset(item, assetMap)
+}
+
 function buildPhonicsQuestions(
   phonicsRows: ContentItem[],
+  vocab: ContentItem[],
   assets: Asset[],
+  recommendedTypes: string[],
   targetCount = 7,
 ): Question[] {
   const assetMap = new Map(
-    assets.map((asset) => [
-      asset.image_key,
-      asset,
-    ]),
+    assets.map((asset) => [asset.image_key, asset]),
   )
 
   const candidates: Question[] = []
+  const requested = new Set(recommendedTypes)
 
   for (const row of phonicsRows) {
-    const phonicsType =
-      row.phonics_type.toLowerCase()
     const examples = splitCsv(row.example)
     const tokens = splitCsv(row.english)
 
-    if (
-      phonicsType === 'letter_sound' &&
-      tokens.length === examples.length
-    ) {
-      const letters = tokens
-        .map(normalizeLetterToken)
-        .filter(Boolean)
+    const letters = tokens
+      .map(normalizeLetterToken)
+      .filter(Boolean)
 
+    const blends = tokens
+      .map((token) => token.toLowerCase())
+      .filter((token) => /^[a-z]{2,3}$/.test(token))
+
+    if (
+      requested.has('image_to_initial_letter') ||
+      requested.has('audio_to_initial_letter') ||
+      requested.has('missing_initial_letter') ||
+      requested.has('letter_case_match')
+    ) {
       examples.forEach((word, index) => {
         const letter = letters[index]
         if (!letter) return
 
-        const wordOptions = createFourOptions(
-          word,
-          examples,
-        )
+        const startsCorrectly =
+          word.toLowerCase().startsWith(letter)
 
-        candidates.push({
-          id: `${row.item_id}-choose-word-${index}`,
-          type: 'phonics_choose_word',
-          item: row,
-          correctAnswer: word,
-          textOptions: wordOptions,
-          phonicsPrompt: letter,
-          phonicsWord: word,
-        })
-
+        const asset = getWordAsset(word, vocab, assetMap)
         const letterOptions = createFourOptions(
           letter,
-          letters,
+          letters.length >= 4 ? letters : LETTER_POOL,
         )
 
-        const asset = assetMap.get(word.toLowerCase())
+        if (
+          requested.has('image_to_initial_letter') &&
+          startsCorrectly &&
+          asset
+        ) {
+          candidates.push({
+            id: `${row.item_id}-image-initial-${index}`,
+            type: 'phonics_image_initial_letter',
+            item: row,
+            correctAnswer: letter,
+            textOptions: letterOptions,
+            phonicsWord: word,
+            asset,
+          })
+        }
 
-        candidates.push({
-          id: `${row.item_id}-beginning-${index}`,
-          type: 'phonics_beginning_sound',
-          item: row,
-          correctAnswer: letter,
-          textOptions: letterOptions,
-          phonicsWord: word,
-          asset:
-            asset && asset.status === 'approved'
-              ? asset
-              : undefined,
-        })
+        if (
+          requested.has('audio_to_initial_letter') &&
+          startsCorrectly
+        ) {
+          candidates.push({
+            id: `${row.item_id}-audio-initial-${index}`,
+            type: 'phonics_audio_initial_letter',
+            item: row,
+            correctAnswer: letter,
+            textOptions: letterOptions,
+            phonicsWord: word,
+            asset,
+          })
+        }
+
+        if (
+          requested.has('missing_initial_letter') &&
+          startsCorrectly
+        ) {
+          candidates.push({
+            id: `${row.item_id}-missing-initial-${index}`,
+            type: 'phonics_missing_initial_letter',
+            item: row,
+            correctAnswer: letter,
+            textOptions: letterOptions,
+            maskedWord: `_${word.slice(1).toLowerCase()}`,
+            phonicsWord: word,
+            asset,
+          })
+        }
+
+        if (requested.has('letter_case_match')) {
+          candidates.push({
+            id: `${row.item_id}-case-${index}`,
+            type: 'phonics_letter_case_match',
+            item: row,
+            correctAnswer: letter,
+            textOptions: letterOptions,
+            phonicsPrompt: letter.toUpperCase(),
+          })
+        }
       })
-    } else if (phonicsType === 'cvc') {
-      for (const word of examples) {
-        const data = makeMaskedVowelWord(word)
+    }
+
+    if (
+      requested.has('audio_to_vowel') ||
+      requested.has('missing_vowel') ||
+      requested.has('cvc_build_word')
+    ) {
+      for (const wordRaw of examples) {
+        const word = wordRaw.toLowerCase()
+        if (!/^[a-z]+$/.test(word)) continue
+
+        const data = firstVowel(word)
         if (!data) continue
 
-        candidates.push({
-          id: `${row.item_id}-cvc-${word}`,
-          type: 'phonics_missing_vowel',
-          item: row,
-          correctAnswer: data.correct,
-          textOptions: shuffle(VOWELS),
-          maskedWord: data.masked,
-          phonicsWord: word,
-        })
+        const asset = getWordAsset(word, vocab, assetMap)
+
+        if (requested.has('audio_to_vowel')) {
+          candidates.push({
+            id: `${row.item_id}-audio-vowel-${word}`,
+            type: 'phonics_audio_vowel',
+            item: row,
+            correctAnswer: data.vowel,
+            textOptions: shuffle(VOWELS),
+            phonicsWord: word,
+            asset,
+          })
+        }
+
+        if (requested.has('missing_vowel')) {
+          candidates.push({
+            id: `${row.item_id}-missing-vowel-${word}`,
+            type: 'phonics_missing_vowel',
+            item: row,
+            correctAnswer: data.vowel,
+            textOptions: shuffle(VOWELS),
+            maskedWord: data.masked,
+            phonicsWord: word,
+            asset,
+          })
+        }
+
+        if (requested.has('cvc_build_word')) {
+          const sameLengthPool = examples
+            .map((value) => value.toLowerCase())
+            .filter(
+              (value) =>
+                /^[a-z]+$/.test(value) &&
+                value.length === word.length,
+            )
+
+          const displayedLetters = shuffle(word.split('')).join('   ')
+
+          candidates.push({
+            id: `${row.item_id}-cvc-build-${word}`,
+            type: 'phonics_cvc_build_word',
+            item: row,
+            correctAnswer: word,
+            textOptions: createFourOptions(
+              word,
+              sameLengthPool.length >= 4
+                ? sameLengthPool
+                : examples.map((value) => value.toLowerCase()),
+            ),
+            phonicsPrompt: displayedLetters,
+            phonicsWord: word,
+            asset,
+          })
+        }
       }
-    } else if (phonicsType === 'blend') {
-      const blends = tokens
-        .map((token) => token.toLowerCase())
-        .filter(Boolean)
+    }
 
-      examples.forEach((word, index) => {
+    if (
+      requested.has('image_to_blend') ||
+      requested.has('audio_to_blend') ||
+      requested.has('missing_blend') ||
+      requested.has('same_initial_blend')
+    ) {
+      examples.forEach((wordRaw, index) => {
+        const word = wordRaw.toLowerCase()
         const blend = blends[index]
-        if (!blend) return
+        if (!blend || !word.startsWith(blend)) return
 
-        candidates.push({
-          id: `${row.item_id}-blend-word-${index}`,
-          type: 'phonics_choose_word',
-          item: row,
-          correctAnswer: word,
-          textOptions: createFourOptions(
-            word,
-            examples,
-          ),
-          phonicsPrompt: blend,
-          phonicsWord: word,
-        })
+        const asset = getWordAsset(word, vocab, assetMap)
+        const blendOptions = createFourOptions(
+          blend,
+          blends,
+        )
 
-        candidates.push({
-          id: `${row.item_id}-choose-blend-${index}`,
-          type: 'phonics_choose_blend',
-          item: row,
-          correctAnswer: blend,
-          textOptions: createFourOptions(
-            blend,
-            blends,
-          ),
-          phonicsWord: word,
-        })
+        if (requested.has('image_to_blend') && asset) {
+          candidates.push({
+            id: `${row.item_id}-image-blend-${index}`,
+            type: 'phonics_image_blend',
+            item: row,
+            correctAnswer: blend,
+            textOptions: blendOptions,
+            phonicsWord: word,
+            asset,
+          })
+        }
+
+        if (requested.has('audio_to_blend')) {
+          candidates.push({
+            id: `${row.item_id}-audio-blend-${index}`,
+            type: 'phonics_audio_blend',
+            item: row,
+            correctAnswer: blend,
+            textOptions: blendOptions,
+            phonicsWord: word,
+            asset,
+          })
+        }
+
+        if (requested.has('missing_blend')) {
+          candidates.push({
+            id: `${row.item_id}-missing-blend-${index}`,
+            type: 'phonics_missing_blend',
+            item: row,
+            correctAnswer: blend,
+            textOptions: blendOptions,
+            maskedWord: `__${word.slice(blend.length)}`,
+            phonicsWord: word,
+            asset,
+          })
+        }
+
+        if (requested.has('same_initial_blend')) {
+          const sameBlend = vocab
+            .map((v) => v.english.toLowerCase())
+            .filter(
+              (value) =>
+                value !== word &&
+                value.startsWith(blend),
+            )
+
+          if (sameBlend.length > 0) {
+            const correctWord = shuffle(sameBlend)[0]
+            const distractors = vocab
+              .map((v) => v.english.toLowerCase())
+              .filter(
+                (value) =>
+                  value !== word &&
+                  value !== correctWord &&
+                  !value.startsWith(blend),
+              )
+
+            candidates.push({
+              id: `${row.item_id}-same-blend-${index}`,
+              type: 'phonics_same_initial_blend',
+              item: row,
+              correctAnswer: correctWord,
+              textOptions: createFourOptions(
+                correctWord,
+                distractors,
+              ),
+              phonicsWord: word,
+              phonicsPrompt: blend,
+            })
+          }
+        }
       })
     }
   }
 
-  if (candidates.length === 0) {
-    return []
-  }
+  if (candidates.length === 0) return []
 
   const shuffled = shuffle(candidates)
   const result: Question[] = []
+  const seenWords = new Set<string>()
 
   while (
     result.length < targetCount &&
     shuffled.length > 0
   ) {
     const last = result[result.length - 1]
-    let index = shuffled.findIndex(
-      (question) =>
-        !last || question.type !== last.type,
-    )
 
+    let index = shuffled.findIndex((question) => {
+      const wordKey = question.phonicsWord ?? question.id
+      return (
+        (!last || question.type !== last.type) &&
+        !seenWords.has(wordKey)
+      )
+    })
+
+    if (index < 0) {
+      index = shuffled.findIndex(
+        (question) => !last || question.type !== last.type,
+      )
+    }
     if (index < 0) index = 0
 
     const [picked] = shuffled.splice(index, 1)
     result.push(picked)
-  }
-
-  if (result.length < targetCount) {
-    const refill = shuffle(candidates)
-
-    while (
-      result.length < targetCount &&
-      refill.length > 0
-    ) {
-      const next = refill.shift()
-      if (next) {
-        result.push({
-          ...next,
-          id: `${next.id}-repeat-${result.length}`,
-        })
-      }
-    }
+    seenWords.add(picked.phonicsWord ?? picked.id)
   }
 
   return result.slice(0, targetCount)
@@ -1163,6 +1338,12 @@ export default function Practice() {
           'sentence',
         )
 
+        const phonicsTypes = getRecommendedTypes(
+          data.lessonPractice,
+          lessonId,
+          'phonics',
+        )
+
         if (mode === 'sentence') {
           if (sentences.length === 0) {
             throw new Error(
@@ -1185,7 +1366,9 @@ export default function Practice() {
           const phonicsQuestions =
             buildPhonicsQuestions(
               phonics,
+              vocab,
               data.assets,
+              phonicsTypes,
               10,
             )
 
@@ -1225,7 +1408,9 @@ export default function Practice() {
           const phonicsQuestions =
             buildPhonicsQuestions(
               phonics,
+              vocab,
               data.assets,
+              phonicsTypes,
               7,
             )
 
@@ -1297,6 +1482,12 @@ export default function Practice() {
       currentQuestion.type === 'sentence_listen_choose'
     ) {
       autoText = currentQuestion.item.english
+    } else if (
+      currentQuestion.type === 'phonics_audio_initial_letter' ||
+      currentQuestion.type === 'phonics_audio_vowel' ||
+      currentQuestion.type === 'phonics_audio_blend'
+    ) {
+      autoText = currentQuestion.phonicsWord ?? ''
     }
 
     if (!autoText) return
@@ -1799,34 +1990,66 @@ export default function Practice() {
           </>
         )}
 
-        {currentQuestion.type === 'phonics_choose_word' && (
+        {currentQuestion.type === 'phonics_image_initial_letter' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Which word starts with this sound?
+              Choose the beginning letter.
             </p>
-
-            <div className="mt-6 text-center text-6xl font-bold text-slate-800">
-              {currentQuestion.phonicsPrompt}
+            <div className="mt-6 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} />
+              )}
             </div>
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish('Choose the beginning letter.')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
+            >
+              🔊
+            </button>
           </>
         )}
 
-        {currentQuestion.type === 'phonics_beginning_sound' && (
+        {currentQuestion.type === 'phonics_audio_initial_letter' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Which letter does this word start with?
+              Listen and choose the beginning letter.
             </p>
-
             <div className="mt-6 flex justify-center">
-              {currentQuestion.asset ? (
-                <Visual asset={currentQuestion.asset} />
-              ) : (
-                <div className="text-center text-4xl font-bold text-slate-800">
-                  {currentQuestion.phonicsWord}
-                </div>
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} size="inline" />
               )}
             </div>
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-100 px-6 py-5 text-4xl hover:bg-indigo-200"
+            >
+              🔊
+            </button>
+            <p className="mt-2 text-center text-sm text-slate-400">
+              Tap to listen again
+            </p>
+          </>
+        )}
 
+        {currentQuestion.type === 'phonics_missing_initial_letter' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the missing beginning letter.
+            </p>
+            <div className="mt-5 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} size="inline" />
+              )}
+            </div>
+            <div className="mt-5 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
+              {currentQuestion.maskedWord}
+            </div>
             <button
               type="button"
               onClick={() =>
@@ -1836,6 +2059,42 @@ export default function Practice() {
             >
               🔊
             </button>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_letter_case_match' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Match the capital and small letter.
+            </p>
+            <div className="mt-6 text-center text-6xl font-bold text-slate-800">
+              {currentQuestion.phonicsPrompt}
+            </div>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_audio_vowel' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Listen and choose the vowel.
+            </p>
+            <div className="mt-5 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} size="inline" />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-100 px-6 py-5 text-4xl hover:bg-indigo-200"
+            >
+              🔊
+            </button>
+            <p className="mt-2 text-center text-sm text-slate-400">
+              Tap to listen again
+            </p>
           </>
         )}
 
@@ -1844,11 +2103,14 @@ export default function Practice() {
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Choose the missing vowel.
             </p>
-
-            <div className="mt-6 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
+            <div className="mt-5 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} size="inline" />
+              )}
+            </div>
+            <div className="mt-5 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
               {currentQuestion.maskedWord}
             </div>
-
             <button
               type="button"
               onClick={() =>
@@ -1861,16 +2123,111 @@ export default function Practice() {
           </>
         )}
 
-        {currentQuestion.type === 'phonics_choose_blend' && (
+        {currentQuestion.type === 'phonics_cvc_build_word' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the beginning sound.
+              Put the sounds together. Choose the word.
             </p>
+            <div className="mt-5 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} size="inline" />
+              )}
+            </div>
+            <div className="mt-6 text-center text-4xl font-bold tracking-[0.18em] text-slate-800">
+              {currentQuestion.phonicsPrompt}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
+            >
+              🔊
+            </button>
+          </>
+        )}
 
+        {currentQuestion.type === 'phonics_image_blend' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the beginning blend.
+            </p>
+            <div className="mt-6 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish('Choose the beginning blend.')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
+            >
+              🔊
+            </button>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_audio_blend' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Listen and choose the beginning blend.
+            </p>
+            <div className="mt-5 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} size="inline" />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-100 px-6 py-5 text-4xl hover:bg-indigo-200"
+            >
+              🔊
+            </button>
+            <p className="mt-2 text-center text-sm text-slate-400">
+              Tap to listen again
+            </p>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_missing_blend' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the missing beginning blend.
+            </p>
+            <div className="mt-5 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual asset={currentQuestion.asset} size="inline" />
+              )}
+            </div>
+            <div className="mt-5 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
+              {currentQuestion.maskedWord}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
+            >
+              🔊
+            </button>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_same_initial_blend' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Which word begins with the same sound?
+            </p>
             <div className="mt-6 text-center text-4xl font-bold text-slate-800">
               {currentQuestion.phonicsWord}
             </div>
-
             <button
               type="button"
               onClick={() =>
