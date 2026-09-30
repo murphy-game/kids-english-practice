@@ -8,12 +8,20 @@ import type {
   LessonPractice,
 } from '../types'
 
+type PracticeMode =
+  | 'daily'
+  | 'vocab'
+  | 'sentence'
+  | 'phonics'
+
 type QuestionType =
   | 'image_to_word'
   | 'audio_to_word'
   | 'word_to_image'
   | 'audio_to_image'
   | 'missing_letter'
+  | 'sentence_listen_choose'
+  | 'sentence_fill_blank'
 
 type VisualOption = {
   key: string
@@ -30,6 +38,7 @@ type Question = {
   correctAnswer: string
   asset?: Asset
   maskedWord?: string
+  sentencePrompt?: string
 }
 
 const IMAGE_BASE_PATH =
@@ -59,14 +68,27 @@ function getVocabulary(
   )
 }
 
+function getSentences(
+  content: ContentItem[],
+  lessonId: string,
+) {
+  return content.filter(
+    (item) =>
+      item.lesson_id === lessonId &&
+      item.type === 'sentence' &&
+      item.english.trim() !== '',
+  )
+}
+
 function getRecommendedTypes(
   lessonPractice: LessonPractice[],
   lessonId: string,
+  category: string,
 ): string[] {
   const row = lessonPractice.find(
     (item) =>
       item.lesson_id === lessonId &&
-      item.category === 'vocab',
+      item.category === category,
   )
 
   if (!row) {
@@ -99,10 +121,31 @@ function createEnglishOptions(
   ])
 }
 
+function createSentenceOptions(
+  item: ContentItem,
+  sentences: ContentItem[],
+) {
+  const distractors = shuffle(
+    sentences
+      .filter(
+        (other) =>
+          other.item_id !== item.item_id &&
+          other.english !== item.english,
+      )
+      .map((other) => other.english),
+  ).slice(0, 3)
+
+  return shuffle([
+    item.english,
+    ...distractors,
+  ])
+}
+
 function createMissingLetterQuestion(
   item: ContentItem,
 ) {
-  const word = item.english.toLowerCase()
+  const word =
+    item.english.toLowerCase()
 
   const validIndexes = word
     .split('')
@@ -126,7 +169,8 @@ function createMissingLetterQuestion(
       )
     ]
 
-  const missingLetter = picked.char
+  const missingLetter =
+    picked.char
 
   const maskedWord = word
     .split('')
@@ -154,6 +198,194 @@ function createMissingLetterQuestion(
   }
 }
 
+function createSentenceBlank(
+  item: ContentItem,
+  sentences: ContentItem[],
+) {
+  const pattern =
+    item.answer_pattern.trim()
+
+  if (
+    pattern &&
+    pattern.includes('____')
+  ) {
+    const blankIndex =
+      pattern.indexOf('____')
+
+    const prefix =
+      pattern.slice(
+        0,
+        blankIndex,
+      )
+
+    const suffix =
+      pattern.slice(
+        blankIndex + 4,
+      )
+
+    let answer = ''
+
+    if (
+      item.english.startsWith(prefix) &&
+      (
+        suffix === '' ||
+        item.english.endsWith(suffix)
+      )
+    ) {
+      const endIndex =
+        suffix === ''
+          ? item.english.length
+          : item.english.length -
+            suffix.length
+
+      answer =
+        item.english
+          .slice(
+            prefix.length,
+            endIndex,
+          )
+          .trim()
+    }
+
+    if (answer) {
+      const otherAnswers =
+        sentences
+          .map((other) =>
+            extractBlankAnswer(
+              other,
+            ),
+          )
+          .filter(
+            (value): value is string =>
+              Boolean(value) &&
+              value !== answer,
+          )
+
+      const distractors =
+        shuffle([
+          ...new Set(
+            otherAnswers,
+          ),
+        ]).slice(0, 3)
+
+      const fallbackWords =
+        shuffle(
+          sentences
+            .flatMap((other) =>
+              other.english
+                .replace(
+                  /[.,!?]/g,
+                  '',
+                )
+                .split(/\s+/),
+            )
+            .filter(
+              (word) =>
+                word &&
+                word !== answer &&
+                /^[A-Za-z]+$/.test(
+                  word,
+                ),
+            ),
+        )
+
+      while (
+        distractors.length < 3 &&
+        fallbackWords.length > 0
+      ) {
+        const candidate =
+          fallbackWords.shift()
+
+        if (
+          candidate &&
+          !distractors.includes(
+            candidate,
+          )
+        ) {
+          distractors.push(
+            candidate,
+          )
+        }
+      }
+
+      return {
+        prompt: pattern,
+        answer,
+        options: shuffle([
+          answer,
+          ...distractors.slice(
+            0,
+            3,
+          ),
+        ]),
+      }
+    }
+  }
+
+  return null
+}
+
+function extractBlankAnswer(
+  item: ContentItem,
+) {
+  const pattern =
+    item.answer_pattern.trim()
+
+  if (
+    !pattern ||
+    !pattern.includes('____')
+  ) {
+    return null
+  }
+
+  const blankIndex =
+    pattern.indexOf('____')
+
+  const prefix =
+    pattern.slice(
+      0,
+      blankIndex,
+    )
+
+  const suffix =
+    pattern.slice(
+      blankIndex + 4,
+    )
+
+  if (
+    !item.english.startsWith(
+      prefix,
+    )
+  ) {
+    return null
+  }
+
+  if (
+    suffix &&
+    !item.english.endsWith(
+      suffix,
+    )
+  ) {
+    return null
+  }
+
+  const endIndex =
+    suffix === ''
+      ? item.english.length
+      : item.english.length -
+        suffix.length
+
+  const answer =
+    item.english
+      .slice(
+        prefix.length,
+        endIndex,
+      )
+      .trim()
+
+  return answer || null
+}
+
 function getUsableAsset(
   item: ContentItem,
   assetMap: Map<string, Asset>,
@@ -163,7 +395,9 @@ function getUsableAsset(
   }
 
   const asset =
-    assetMap.get(item.image_key)
+    assetMap.get(
+      item.image_key,
+    )
 
   if (!asset) {
     return undefined
@@ -225,7 +459,8 @@ function createVisualOptions(
     ...distractorItems.map(
       (other) => ({
         key: other.image_key,
-        english: other.english,
+        english:
+          other.english,
         asset:
           getUsableAsset(
             other,
@@ -238,7 +473,7 @@ function createVisualOptions(
   return shuffle(options)
 }
 
-function buildQuestions(
+function buildVocabularyQuestions(
   vocab: ContentItem[],
   assets: Asset[],
   recommendedTypes: string[],
@@ -253,17 +488,21 @@ function buildQuestions(
   const supportedRecommended =
     recommendedTypes.filter(
       (type) =>
-        type === 'image_to_word' ||
-        type === 'audio_to_word' ||
-        type === 'audio_to_image' ||
-        type === 'missing_letter',
+        type ===
+          'image_to_word' ||
+        type ===
+          'audio_to_word' ||
+        type ===
+          'audio_to_image' ||
+        type ===
+          'missing_letter',
     ) as QuestionType[]
 
-  const availableTypes: QuestionType[] = [
-    ...supportedRecommended,
-  ]
+  const availableTypes:
+    QuestionType[] = [
+      ...supportedRecommended,
+    ]
 
-  // 保留「看到英文單字 → 選圖片」
   if (
     !availableTypes.includes(
       'word_to_image',
@@ -275,11 +514,14 @@ function buildQuestions(
   }
 
   const uniqueTypes = [
-    ...new Set(availableTypes),
+    ...new Set(
+      availableTypes,
+    ),
   ]
 
-  // 如果 Sheet 沒有設定題型，提供基本題型
-  if (uniqueTypes.length === 0) {
+  if (
+    uniqueTypes.length === 0
+  ) {
     uniqueTypes.push(
       'image_to_word',
       'audio_to_word',
@@ -292,7 +534,10 @@ function buildQuestions(
   const selectedItems =
     shuffle(vocab).slice(
       0,
-      Math.min(10, vocab.length),
+      Math.min(
+        10,
+        vocab.length,
+      ),
     )
 
   return selectedItems.map(
@@ -309,18 +554,20 @@ function buildQuestions(
           assetMap,
         )
 
-      // 沒有圖片就不能做圖片→單字
       if (
-        type === 'image_to_word' &&
+        type ===
+          'image_to_word' &&
         !asset
       ) {
-        type = 'audio_to_word'
+        type =
+          'audio_to_word'
       }
 
-      // 單字→圖片 / 聽音→圖片
       if (
-        type === 'word_to_image' ||
-        type === 'audio_to_image'
+        type ===
+          'word_to_image' ||
+        type ===
+          'audio_to_image'
       ) {
         const visualOptions =
           createVisualOptions(
@@ -330,13 +577,16 @@ function buildQuestions(
           )
 
         if (
-          visualOptions.length < 2
+          visualOptions.length <
+          2
         ) {
-          type = 'audio_to_word'
+          type =
+            'audio_to_word'
         } else {
           return {
             id:
-              type === 'audio_to_image'
+              type ===
+              'audio_to_image'
                 ? `${item.item_id}-audio-image`
                 : `${item.item_id}-word-image`,
             type,
@@ -348,9 +598,9 @@ function buildQuestions(
         }
       }
 
-      // 圖片→單字
       if (
-        type === 'image_to_word'
+        type ===
+        'image_to_word'
       ) {
         return {
           id: `${item.item_id}-image-word`,
@@ -367,9 +617,9 @@ function buildQuestions(
         }
       }
 
-      // 聽音→單字
       if (
-        type === 'audio_to_word'
+        type ===
+        'audio_to_word'
       ) {
         return {
           id: `${item.item_id}-audio-word`,
@@ -385,9 +635,9 @@ function buildQuestions(
         }
       }
 
-      // 缺字母
       if (
-        type === 'missing_letter'
+        type ===
+        'missing_letter'
       ) {
         const missing =
           createMissingLetterQuestion(
@@ -409,10 +659,10 @@ function buildQuestions(
         }
       }
 
-      // fallback
       return {
         id: `${item.item_id}-fallback`,
-        type: 'audio_to_word',
+        type:
+          'audio_to_word',
         item,
         correctAnswer:
           item.english,
@@ -420,6 +670,92 @@ function buildQuestions(
           createEnglishOptions(
             item,
             vocab,
+          ),
+      }
+    },
+  )
+}
+
+function buildSentenceQuestions(
+  sentences: ContentItem[],
+  recommendedTypes: string[],
+): Question[] {
+  const allowedTypes =
+    recommendedTypes.filter(
+      (type) =>
+        type ===
+          'fill_blank' ||
+        type ===
+          'listen_and_choose',
+    )
+
+  if (
+    allowedTypes.length === 0
+  ) {
+    allowedTypes.push(
+      'listen_and_choose',
+      'fill_blank',
+    )
+  }
+
+  const selectedItems =
+    shuffle(sentences).slice(
+      0,
+      Math.min(
+        10,
+        sentences.length,
+      ),
+    )
+
+  return selectedItems.map(
+    (item, index) => {
+      const requestedType =
+        allowedTypes[
+          index %
+            allowedTypes.length
+        ]
+
+      if (
+        requestedType ===
+        'fill_blank'
+      ) {
+        const blank =
+          createSentenceBlank(
+            item,
+            sentences,
+          )
+
+        if (
+          blank &&
+          blank.options.length >=
+            2
+        ) {
+          return {
+            id: `${item.item_id}-sentence-blank`,
+            type:
+              'sentence_fill_blank',
+            item,
+            correctAnswer:
+              blank.answer,
+            textOptions:
+              blank.options,
+            sentencePrompt:
+              blank.prompt,
+          }
+        }
+      }
+
+      return {
+        id: `${item.item_id}-sentence-listen`,
+        type:
+          'sentence_listen_choose',
+        item,
+        correctAnswer:
+          item.english,
+        textOptions:
+          createSentenceOptions(
+            item,
+            sentences,
           ),
       }
     },
@@ -447,7 +783,9 @@ function speakEnglish(
       text,
     )
 
-  utterance.lang = 'en-US'
+  utterance.lang =
+    'en-US'
+
   utterance.rate = 0.85
   utterance.pitch = 1
 
@@ -515,8 +853,11 @@ function Visual({
 }
 
 export default function Practice() {
-  const location = useLocation()
-  const navigate = useNavigate()
+  const location =
+    useLocation()
+
+  const navigate =
+    useNavigate()
 
   const params =
     new URLSearchParams(
@@ -524,12 +865,25 @@ export default function Practice() {
     )
 
   const lessonId =
-    params.get('lesson') ?? ''
+    params.get('lesson') ??
+    ''
+
+  const rawMode =
+    params.get('mode') ??
+    'vocab'
+
+  const mode: PracticeMode =
+    rawMode === 'sentence' ||
+    rawMode === 'daily' ||
+    rawMode === 'phonics'
+      ? rawMode
+      : 'vocab'
 
   const [
     questions,
     setQuestions,
-  ] = useState<Question[]>([])
+  ] =
+    useState<Question[]>([])
 
   const [
     currentIndex,
@@ -540,18 +894,24 @@ export default function Practice() {
     selected,
     setSelected,
   ] =
-    useState<string | null>(
-      null,
-    )
+    useState<
+      string | null
+    >(null)
 
-  const [score, setScore] =
-    useState(0)
+  const [
+    score,
+    setScore,
+  ] = useState(0)
 
-  const [loading, setLoading] =
-    useState(true)
+  const [
+    loading,
+    setLoading,
+  ] = useState(true)
 
-  const [error, setError] =
-    useState('')
+  const [
+    error,
+    setError,
+  ] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -559,6 +919,46 @@ export default function Practice() {
         const data =
           await loadAppData()
 
+        if (
+          mode ===
+          'sentence'
+        ) {
+          const sentences =
+            getSentences(
+              data.content,
+              lessonId,
+            )
+
+          if (
+            sentences.length ===
+            0
+          ) {
+            throw new Error(
+              'No sentence practice found for this lesson.',
+            )
+          }
+
+          const types =
+            getRecommendedTypes(
+              data.lessonPractice,
+              lessonId,
+              'sentence',
+            )
+
+          setQuestions(
+            buildSentenceQuestions(
+              sentences,
+              types,
+            ),
+          )
+
+          return
+        }
+
+        /*
+         * Daily 暫時仍使用 Vocabulary。
+         * 等 Phonics 完成後再改成 4+3+3。
+         */
         const vocab =
           getVocabulary(
             data.content,
@@ -566,31 +966,32 @@ export default function Practice() {
           )
 
         if (
-          vocab.length === 0
+          vocab.length ===
+          0
         ) {
           throw new Error(
             'No vocabulary found for this lesson.',
           )
         }
 
-        const recommendedTypes =
+        const types =
           getRecommendedTypes(
             data.lessonPractice,
             lessonId,
-          )
-
-        const builtQuestions =
-          buildQuestions(
-            vocab,
-            data.assets,
-            recommendedTypes,
+            'vocab',
           )
 
         setQuestions(
-          builtQuestions,
+          buildVocabularyQuestions(
+            vocab,
+            data.assets,
+            types,
+          ),
         )
       } catch (err) {
-        setError(String(err))
+        setError(
+          String(err),
+        )
       } finally {
         setLoading(false)
       }
@@ -602,6 +1003,7 @@ export default function Practice() {
       setError(
         'Missing lesson id.',
       )
+
       setLoading(false)
     }
 
@@ -612,10 +1014,15 @@ export default function Practice() {
         'speechSynthesis' in
           window
       ) {
-        window.speechSynthesis.cancel()
+        window
+          .speechSynthesis
+          .cancel()
       }
     }
-  }, [lessonId])
+  }, [
+    lessonId,
+    mode,
+  ])
 
   const currentQuestion =
     useMemo(
@@ -664,7 +1071,9 @@ export default function Practice() {
       'speechSynthesis' in
         window
     ) {
-      window.speechSynthesis.cancel()
+      window
+        .speechSynthesis
+        .cancel()
     }
 
     setSelected(null)
@@ -673,6 +1082,10 @@ export default function Practice() {
       (value) =>
         value + 1,
     )
+  }
+
+  function goBack() {
+    navigate('/')
   }
 
   if (loading) {
@@ -688,7 +1101,8 @@ export default function Practice() {
       <main className="mx-auto max-w-3xl p-6">
         <div className="rounded-2xl bg-white p-6 shadow-sm">
           <h1 className="text-xl font-bold text-red-600">
-            Practice unavailable
+            Practice
+            unavailable
           </h1>
 
           <p className="mt-2 text-slate-600">
@@ -697,9 +1111,7 @@ export default function Practice() {
 
           <button
             type="button"
-            onClick={() =>
-              navigate('/')
-            }
+            onClick={goBack}
             className="mt-5 rounded-xl bg-slate-800 px-4 py-2 font-semibold text-white"
           >
             Back home
@@ -710,37 +1122,59 @@ export default function Practice() {
   }
 
   if (finished) {
+    const isDaily =
+      mode === 'daily'
+
     return (
       <main className="mx-auto max-w-3xl p-6">
         <div className="rounded-3xl bg-white p-8 text-center shadow-sm">
           <div className="text-6xl">
-            🌱
+            {isDaily
+              ? '🌱'
+              : mode ===
+                  'sentence'
+                ? '💬'
+                : '📚'}
           </div>
 
           <h1 className="mt-4 text-3xl font-bold">
-            Practice complete!
+            Practice
+            complete!
           </h1>
 
           <p className="mt-3 text-lg text-slate-600">
             You got {score} /{' '}
-            {questions.length}{' '}
+            {
+              questions.length
+            }{' '}
             correct.
           </p>
 
-          <div className="mt-6 text-4xl">
-            💧
-          </div>
+          {isDaily && (
+            <>
+              <div className="mt-6 text-4xl">
+                💧
+              </div>
 
-          <p className="mt-2 font-semibold text-emerald-600">
-            You earned water
-            for your tree!
-          </p>
+              <p className="mt-2 font-semibold text-emerald-600">
+                You earned
+                water for your
+                tree!
+              </p>
+            </>
+          )}
+
+          {!isDaily && (
+            <p className="mt-5 text-sm text-slate-400">
+              Free practice
+              does not earn
+              water.
+            </p>
+          )}
 
           <button
             type="button"
-            onClick={() =>
-              navigate('/')
-            }
+            onClick={goBack}
             className="mt-6 rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white"
           >
             Back to lessons
@@ -767,12 +1201,17 @@ export default function Practice() {
 
   return (
     <main className="mx-auto max-w-3xl p-6">
+
       <section className="mb-6">
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
             Question{' '}
-            {currentIndex + 1} /{' '}
-            {questions.length}
+            {currentIndex +
+              1}{' '}
+            /{' '}
+            {
+              questions.length
+            }
           </span>
 
           <span>
@@ -792,12 +1231,13 @@ export default function Practice() {
 
       <section className="rounded-3xl bg-white p-8 shadow-sm">
 
-        {/* 圖片 → 單字 */}
+        {/* Vocabulary: image -> word */}
         {currentQuestion.type ===
           'image_to_word' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the word.
+              Choose the
+              word.
             </p>
 
             <div className="mt-6 flex justify-center">
@@ -819,7 +1259,6 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full bg-sky-50 px-4 py-3 text-2xl transition hover:bg-sky-100"
-                aria-label="Play instruction"
               >
                 🔊
               </button>
@@ -827,12 +1266,13 @@ export default function Practice() {
           </>
         )}
 
-        {/* 聽音 → 單字 */}
+        {/* Vocabulary: audio -> word */}
         {currentQuestion.type ===
           'audio_to_word' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose.
+              Listen and
+              choose.
             </p>
 
             <div className="my-8 text-center">
@@ -846,7 +1286,6 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
-                aria-label="Play word"
               >
                 🔊
               </button>
@@ -858,12 +1297,13 @@ export default function Practice() {
           </>
         )}
 
-        {/* 單字 → 圖片 */}
+        {/* Vocabulary: word -> image */}
         {currentQuestion.type ===
           'word_to_image' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the picture.
+              Choose the
+              picture.
             </p>
 
             <h1 className="mt-4 text-center text-5xl font-bold text-slate-800">
@@ -885,7 +1325,6 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full px-4 py-2 text-2xl hover:bg-slate-100"
-                aria-label="Play word"
               >
                 🔊
               </button>
@@ -893,12 +1332,14 @@ export default function Practice() {
           </>
         )}
 
-        {/* 聽音 → 圖片 */}
+        {/* Vocabulary: audio -> image */}
         {currentQuestion.type ===
           'audio_to_image' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose the picture.
+              Listen and
+              choose the
+              picture.
             </p>
 
             <div className="my-8 text-center">
@@ -912,7 +1353,6 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
-                aria-label="Play word"
               >
                 🔊
               </button>
@@ -924,12 +1364,14 @@ export default function Practice() {
           </>
         )}
 
-        {/* 缺字母 */}
+        {/* Vocabulary: missing letter */}
         {currentQuestion.type ===
           'missing_letter' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the missing letter.
+              Choose the
+              missing
+              letter.
             </p>
 
             <div className="mt-5 text-center">
@@ -950,7 +1392,6 @@ export default function Practice() {
                   )
                 }
                 className="mt-4 rounded-full bg-sky-50 px-4 py-3 text-3xl hover:bg-sky-100"
-                aria-label="Play word"
               >
                 🔊
               </button>
@@ -958,18 +1399,82 @@ export default function Practice() {
           </>
         )}
 
-        {/* 圖片選項 */}
+        {/* Sentence: listen and choose */}
+        {currentQuestion.type ===
+          'sentence_listen_choose' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Listen and
+              choose the
+              sentence.
+            </p>
+
+            <div className="my-8 text-center">
+              <button
+                type="button"
+                onClick={() =>
+                  speakEnglish(
+                    currentQuestion
+                      .item
+                      .english,
+                  )
+                }
+                className="rounded-full bg-violet-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
+              >
+                🔊
+              </button>
+
+              <p className="mt-3 text-sm text-slate-400">
+                Tap to listen
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* Sentence: fill blank */}
+        {currentQuestion.type ===
+          'sentence_fill_blank' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the
+              missing word.
+            </p>
+
+            <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
+              {
+                currentQuestion
+                  .sentencePrompt
+              }
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(
+                  currentQuestion
+                    .item
+                    .english,
+                )
+              }
+              className="mx-auto mt-5 block rounded-full bg-violet-50 px-4 py-3 text-3xl hover:bg-violet-100"
+            >
+              🔊
+            </button>
+          </>
+        )}
+
+        {/* Image choices */}
         {usesVisualOptions ? (
           <div className="mt-8 grid grid-cols-2 gap-4">
             {currentQuestion.visualOptions?.map(
               (option) => {
                 const isCorrect =
                   option.english ===
-                    currentQuestion.correctAnswer
+                  currentQuestion.correctAnswer
 
                 const isSelected =
                   option.english ===
-                    selected
+                  selected
 
                 let className =
                   'flex min-h-40 items-center justify-center rounded-2xl border-2 p-4 transition '
@@ -1023,17 +1528,16 @@ export default function Practice() {
             )}
           </div>
         ) : (
-          /* 文字選項 */
           <div className="mt-8 grid gap-3 sm:grid-cols-2">
             {currentQuestion.textOptions?.map(
               (option) => {
                 const isCorrect =
                   option ===
-                    currentQuestion.correctAnswer
+                  currentQuestion.correctAnswer
 
                 const isSelected =
                   option ===
-                    selected
+                  selected
 
                 let className =
                   'rounded-2xl border-2 p-4 text-lg font-semibold transition '
@@ -1081,7 +1585,6 @@ export default function Practice() {
           </div>
         )}
 
-        {/* 作答結果 */}
         {selected && (
           <div className="mt-6 text-center">
             <p
