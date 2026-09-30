@@ -160,15 +160,18 @@ function createSentenceOptions(
   item: ContentItem,
   sentences: ContentItem[],
 ) {
-  const distractors = shuffle(
-    sentences
-      .filter(
-        (other) =>
-          other.item_id !== item.item_id &&
-          other.english !== item.english,
-      )
-      .map((other) => other.english),
-  ).slice(0, 3)
+  const distractors = shuffle([
+    ...new Set(
+      sentences
+        .filter(
+          (other) =>
+            other.item_id !== item.item_id &&
+            other.english.trim() !== '' &&
+            other.english !== item.english,
+        )
+        .map((other) => other.english.trim()),
+    ),
+  ]).slice(0, 3)
 
   return shuffle([
     item.english,
@@ -654,25 +657,44 @@ function buildSentenceQuestions(
     )
   }
 
-  const candidates: Question[] = []
+  /*
+   * One sentence item is used at most once in a practice round.
+   * This prevents the same sentence from reappearing as multiple
+   * question types (for example listen-and-choose + response).
+   */
+  const result: Question[] = []
+  const shuffledItems = shuffle(lessonSentences)
+  const usedPrompts = new Set<string>()
+  const usedEnglish = new Set<string>()
 
-  for (const item of lessonSentences) {
+  for (let index = 0; index < shuffledItems.length; index += 1) {
+    if (result.length >= targetCount) break
+
+    const item = shuffledItems[index]
+    const variants: Question[] = []
+
     if (
       allowedTypes.includes('choose_response') &&
       item.prompt.trim() &&
       item.response.trim()
     ) {
-      const options =
-        createResponseOptions(item, allSentences)
+      const prompt = item.prompt.trim()
+      const options = createResponseOptions(
+        item,
+        allSentences,
+      )
 
-      if (options.length === 4) {
-        candidates.push({
+      if (
+        options.length === 4 &&
+        !usedPrompts.has(prompt)
+      ) {
+        variants.push({
           id: `${item.item_id}-sentence-response`,
           type: 'sentence_choose_response',
           item,
           correctAnswer: item.response.trim(),
           textOptions: options,
-          sentencePrompt: item.prompt.trim(),
+          sentencePrompt: prompt,
         })
       }
     }
@@ -683,96 +705,64 @@ function buildSentenceQuestions(
         lessonSentences,
       )
 
-      if (blank && blank.options.length >= 2) {
-        candidates.push({
+      if (
+        blank &&
+        blank.options.length >= 2 &&
+        !usedEnglish.has(item.english.trim())
+      ) {
+        variants.push({
           id: `${item.item_id}-sentence-blank`,
           type: 'sentence_fill_blank',
           item,
           correctAnswer: blank.answer,
-          textOptions: blank.options,
+          textOptions: [
+            ...new Set(blank.options),
+          ],
           sentencePrompt: blank.prompt,
         })
       }
     }
 
     if (
-      allowedTypes.includes('listen_and_choose')
+      allowedTypes.includes('listen_and_choose') &&
+      !usedEnglish.has(item.english.trim())
     ) {
-      candidates.push({
+      variants.push({
         id: `${item.item_id}-sentence-listen`,
         type: 'sentence_listen_choose',
         item,
         correctAnswer: item.english,
-        textOptions:
-          createSentenceOptions(
-            item,
-            allSentences,
-          ),
+        textOptions: createSentenceOptions(
+          item,
+          allSentences,
+        ),
       })
     }
-  }
 
-  const unique = candidates.filter(
-    (question, index, array) => {
-      const signature = [
-        question.type,
-        question.sentencePrompt ?? '',
-        question.correctAnswer,
-      ].join('|')
+    if (variants.length === 0) continue
 
-      return (
-        array.findIndex((other) =>
-          [
-            other.type,
-            other.sentencePrompt ?? '',
-            other.correctAnswer,
-          ].join('|') === signature,
-        ) === index
-      )
-    },
-  )
+    const preferredType =
+      allowedTypes[index % allowedTypes.length]
 
-  const pool = shuffle(unique)
-  const result: Question[] = []
+    const picked =
+      variants.find((question) => {
+        if (preferredType === 'choose_response') {
+          return question.type === 'sentence_choose_response'
+        }
+        if (preferredType === 'fill_blank') {
+          return question.type === 'sentence_fill_blank'
+        }
+        return question.type === 'sentence_listen_choose'
+      }) ?? variants[0]
 
-  while (
-    result.length < targetCount &&
-    pool.length > 0
-  ) {
-    const last = result[result.length - 1]
-
-    let pickIndex = pool.findIndex(
-      (question) =>
-        !last ||
-        question.type !== last.type &&
-        question.sentencePrompt !==
-          last.sentencePrompt,
-    )
-
-    if (pickIndex < 0) pickIndex = 0
-
-    const [picked] = pool.splice(pickIndex, 1)
     result.push(picked)
-  }
-
-  if (result.length < targetCount) {
-    const refill = shuffle(unique)
-
-    while (
-      result.length < targetCount &&
-      refill.length > 0
-    ) {
-      const next = refill.shift()
-      if (next) {
-        result.push({
-          ...next,
-          id: `${next.id}-repeat-${result.length}`,
-        })
-      }
+    usedEnglish.add(item.english.trim())
+    if (item.prompt.trim()) {
+      usedPrompts.add(item.prompt.trim())
     }
   }
 
-  return result.slice(0, targetCount)
+  return result
 }
 
 function splitCsv(value: string) {
@@ -1291,6 +1281,10 @@ export default function Practice() {
     useState(0)
   const [selected, setSelected] =
     useState<string | null>(null)
+  const [wrongAnswers, setWrongAnswers] =
+    useState<string[]>([])
+  const [hasAttempted, setHasAttempted] =
+    useState(false)
   const [score, setScore] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -1389,12 +1383,18 @@ export default function Practice() {
         }
 
         if (mode === 'daily') {
-          const vocabQuestions =
+          /*
+           * Target mix: 10 Vocabulary + 8 Sentence + 7 Phonics.
+           * Some early lessons have fewer than 8 unique sentence items.
+           * We never repeat the same sentence just to reach 25;
+           * any shortage is backfilled with unused vocab/phonics questions.
+           */
+          const vocabPool =
             buildVocabularyQuestions(
               vocab,
               data.assets,
               vocabTypes,
-              10,
+              Math.min(vocab.length, 16),
             )
 
           const sentenceQuestions =
@@ -1405,19 +1405,54 @@ export default function Practice() {
               8,
             )
 
-          const phonicsQuestions =
+          const phonicsPool =
             buildPhonicsQuestions(
               phonics,
               vocab,
               data.assets,
               phonicsTypes,
-              7,
+              12,
             )
 
+          const primaryVocab = vocabPool.slice(0, 10)
+          const primaryPhonics = phonicsPool.slice(0, 7)
+
+          let selectedQuestions = [
+            ...primaryVocab,
+            ...sentenceQuestions,
+            ...primaryPhonics,
+          ]
+
+          const extras = shuffle([
+            ...vocabPool.slice(10),
+            ...phonicsPool.slice(7),
+          ])
+
+          while (
+            selectedQuestions.length < 25 &&
+            extras.length > 0
+          ) {
+            const next = extras.shift()
+            if (next) selectedQuestions.push(next)
+          }
+
           const mixed = mixQuestionGroups([
-            shuffle(vocabQuestions),
-            shuffle(sentenceQuestions),
-            shuffle(phonicsQuestions),
+            shuffle(
+              selectedQuestions.filter((question) =>
+                question.type.startsWith('sentence_') === false &&
+                question.type.startsWith('phonics_') === false,
+              ),
+            ),
+            shuffle(
+              selectedQuestions.filter((question) =>
+                question.type.startsWith('sentence_'),
+              ),
+            ),
+            shuffle(
+              selectedQuestions.filter((question) =>
+                question.type.startsWith('phonics_'),
+              ),
+            ),
           ])
 
           setQuestions(mixed.slice(0, 25))
@@ -1463,6 +1498,8 @@ export default function Practice() {
 
   useEffect(() => {
     setSelected(null)
+    setWrongAnswers([])
+    setHasAttempted(false)
     setSpellPickedIds([])
     setSpellPickedLetters([])
     setSpellError(false)
@@ -1504,13 +1541,31 @@ export default function Practice() {
     currentIndex >= questions.length
 
   function chooseAnswer(answer: string) {
-    if (!currentQuestion || selected) return
-
-    setSelected(answer)
-
-    if (answer === currentQuestion.correctAnswer) {
-      setScore((value) => value + 1)
+    if (
+      !currentQuestion ||
+      selected ||
+      wrongAnswers.includes(answer)
+    ) {
+      return
     }
+
+    const isCorrect =
+      answer === currentQuestion.correctAnswer
+
+    if (isCorrect) {
+      if (!hasAttempted) {
+        setScore((value) => value + 1)
+      }
+      setHasAttempted(true)
+      setSelected(answer)
+      return
+    }
+
+    setHasAttempted(true)
+    setWrongAnswers((answers) => [
+      ...answers,
+      answer,
+    ])
   }
 
   function pickSpellLetter(button: LetterButton) {
@@ -1547,9 +1602,13 @@ export default function Practice() {
       const attempt = nextLetters.join('')
 
       if (attempt === target) {
+        if (!hasAttempted) {
+          setScore((value) => value + 1)
+        }
+        setHasAttempted(true)
         setSelected(attempt)
-        setScore((value) => value + 1)
       } else {
+        setHasAttempted(true)
         setSpellError(true)
       }
     }
@@ -1582,6 +1641,8 @@ export default function Practice() {
     }
 
     setSelected(null)
+    setWrongAnswers([])
+    setHasAttempted(false)
     setSpellPickedIds([])
     setSpellPickedLetters([])
     setSpellError(false)
@@ -2248,22 +2309,24 @@ export default function Practice() {
                   option.english === currentQuestion.correctAnswer
                 const isSelected =
                   option.english === selected
+                const isWrong =
+                  wrongAnswers.includes(option.english)
 
                 let className =
                   'flex min-h-40 items-center justify-center rounded-2xl border-2 p-4 transition '
 
-                if (!selected) {
-                  className +=
-                    'border-slate-200 bg-white hover:border-emerald-400'
-                } else if (isCorrect) {
+                if (isSelected && isCorrect) {
                   className +=
                     'border-emerald-500 bg-emerald-50'
-                } else if (isSelected) {
+                } else if (isWrong) {
                   className +=
-                    'border-red-400 bg-red-50'
-                } else {
+                    'border-red-400 bg-red-50 opacity-70'
+                } else if (selected) {
                   className +=
                     'border-slate-200 bg-slate-50 opacity-50'
+                } else {
+                  className +=
+                    'border-slate-200 bg-white hover:border-emerald-400'
                 }
 
                 return (
@@ -2271,7 +2334,9 @@ export default function Practice() {
                     key={option.key}
                     type="button"
                     onClick={() => chooseAnswer(option.english)}
-                    disabled={selected !== null}
+                    disabled={
+                      selected !== null || isWrong
+                    }
                     className={className}
                   >
                     <Visual
@@ -2288,22 +2353,24 @@ export default function Practice() {
                 const isCorrect =
                   option === currentQuestion.correctAnswer
                 const isSelected = option === selected
+                const isWrong =
+                  wrongAnswers.includes(option)
 
                 let className =
                   'rounded-2xl border-2 p-4 text-lg font-semibold transition '
 
-                if (!selected) {
-                  className +=
-                    'border-slate-200 bg-white hover:border-emerald-400'
-                } else if (isCorrect) {
+                if (isSelected && isCorrect) {
                   className +=
                     'border-emerald-500 bg-emerald-50 text-emerald-700'
-                } else if (isSelected) {
+                } else if (isWrong) {
                   className +=
                     'border-red-400 bg-red-50 text-red-600'
-                } else {
+                } else if (selected) {
                   className +=
                     'border-slate-200 bg-slate-50 text-slate-400'
+                } else {
+                  className +=
+                    'border-slate-200 bg-white text-slate-900 hover:border-emerald-400'
                 }
 
                 return (
@@ -2311,7 +2378,9 @@ export default function Practice() {
                     key={option}
                     type="button"
                     onClick={() => chooseAnswer(option)}
-                    disabled={selected !== null}
+                    disabled={
+                      selected !== null || isWrong
+                    }
                     className={className}
                   >
                     {option}
@@ -2321,18 +2390,18 @@ export default function Practice() {
             </div>
           ))}
 
+        {!selected && wrongAnswers.length > 0 && (
+          <div className="mt-6 text-center">
+            <p className="font-bold text-amber-600">
+              Try again 🙂
+            </p>
+          </div>
+        )}
+
         {selected && (
           <div className="mt-6 text-center">
-            <p
-              className={
-                selected === currentQuestion.correctAnswer
-                  ? 'font-bold text-emerald-600'
-                  : 'font-bold text-red-500'
-              }
-            >
-              {selected === currentQuestion.correctAnswer
-                ? 'Correct! 🎉'
-                : `Answer: ${currentQuestion.correctAnswer}`}
+            <p className="font-bold text-emerald-600">
+              Correct! 🎉
             </p>
 
             <button
