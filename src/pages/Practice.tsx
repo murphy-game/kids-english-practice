@@ -20,14 +20,24 @@ type QuestionType =
   | 'word_to_image'
   | 'audio_to_image'
   | 'missing_letter'
+  | 'spell_word'
   | 'sentence_listen_choose'
   | 'sentence_fill_blank'
   | 'sentence_choose_response'
+  | 'phonics_choose_word'
+  | 'phonics_beginning_sound'
+  | 'phonics_missing_vowel'
+  | 'phonics_choose_blend'
 
 type VisualOption = {
   key: string
   english: string
   asset: Asset
+}
+
+type LetterButton = {
+  id: string
+  letter: string
 }
 
 type Question = {
@@ -40,6 +50,9 @@ type Question = {
   asset?: Asset
   maskedWord?: string
   sentencePrompt?: string
+  letterBank?: LetterButton[]
+  phonicsPrompt?: string
+  phonicsWord?: string
 }
 
 const IMAGE_BASE_PATH =
@@ -47,6 +60,8 @@ const IMAGE_BASE_PATH =
 
 const LETTER_POOL =
   'abcdefghijklmnopqrstuvwxyz'.split('')
+
+const VOWELS = ['a', 'e', 'i', 'o', 'u']
 
 function shuffle<T>(items: T[]): T[] {
   return [...items].sort(() => Math.random() - 0.5)
@@ -77,6 +92,18 @@ function getSentences(
     (item) =>
       item.lesson_id === lessonId &&
       item.type === 'sentence' &&
+      item.english.trim() !== '',
+  )
+}
+
+function getPhonics(
+  content: ContentItem[],
+  lessonId: string,
+) {
+  return content.filter(
+    (item) =>
+      item.lesson_id === lessonId &&
+      item.type === 'phonics' &&
       item.english.trim() !== '',
   )
 }
@@ -144,10 +171,9 @@ function createSentenceOptions(
 
 function createResponseOptions(
   item: ContentItem,
-  sentences: ContentItem[],
+  allSentences: ContentItem[],
 ) {
-  const correct =
-    item.response.trim()
+  const correct = item.response.trim()
 
   if (!correct) {
     return []
@@ -155,29 +181,23 @@ function createResponseOptions(
 
   const responsePool = [
     ...new Set(
-      sentences
+      allSentences
         .filter(
           (other) =>
             other.item_id !== item.item_id &&
             other.response.trim() !== '' &&
             other.response.trim() !== correct,
         )
-        .map((other) =>
-          other.response.trim(),
-        ),
+        .map((other) => other.response.trim()),
     ),
   ]
 
   const distractors =
     shuffle(responsePool).slice(0, 3)
 
-  /*
-   * 如果同一課 response 太少，
-   * 再用該課其他 sentence 補選項。
-   */
   if (distractors.length < 3) {
     const sentencePool = shuffle(
-      sentences
+      allSentences
         .filter(
           (other) =>
             other.item_id !== item.item_id &&
@@ -187,15 +207,11 @@ function createResponseOptions(
               other.english.trim(),
             ),
         )
-        .map((other) =>
-          other.english.trim(),
-        ),
+        .map((other) => other.english.trim()),
     )
 
     for (const candidate of sentencePool) {
-      if (distractors.length >= 3) {
-        break
-      }
+      if (distractors.length >= 3) break
 
       if (
         candidate &&
@@ -216,18 +232,12 @@ function createResponseOptions(
 function createMissingLetterQuestion(
   item: ContentItem,
 ) {
-  const word =
-    item.english.toLowerCase()
+  const word = item.english.toLowerCase()
 
   const validIndexes = word
     .split('')
-    .map((char, index) => ({
-      char,
-      index,
-    }))
-    .filter(({ char }) =>
-      /^[a-z]$/.test(char),
-    )
+    .map((char, index) => ({ char, index }))
+    .filter(({ char }) => /^[a-z]$/.test(char))
 
   if (validIndexes.length === 0) {
     return null
@@ -236,27 +246,22 @@ function createMissingLetterQuestion(
   const picked =
     validIndexes[
       Math.floor(
-        Math.random() *
-          validIndexes.length,
+        Math.random() * validIndexes.length,
       )
     ]
 
-  const missingLetter =
-    picked.char
+  const missingLetter = picked.char
 
   const maskedWord = word
     .split('')
     .map((char, index) =>
-      index === picked.index
-        ? '_'
-        : char,
+      index === picked.index ? '_' : char,
     )
     .join('')
 
   const wrongLetters = shuffle(
     LETTER_POOL.filter(
-      (letter) =>
-        letter !== missingLetter,
+      (letter) => letter !== missingLetter,
     ),
   ).slice(0, 3)
 
@@ -273,33 +278,17 @@ function createMissingLetterQuestion(
 function extractBlankAnswer(
   item: ContentItem,
 ) {
-  const pattern =
-    item.answer_pattern.trim()
+  const pattern = item.answer_pattern.trim()
 
-  if (
-    !pattern ||
-    !pattern.includes('____')
-  ) {
+  if (!pattern || !pattern.includes('____')) {
     return null
   }
 
-  const blankIndex =
-    pattern.indexOf('____')
+  const blankIndex = pattern.indexOf('____')
+  const prefix = pattern.slice(0, blankIndex)
+  const suffix = pattern.slice(blankIndex + 4)
 
-  const prefix =
-    pattern.slice(
-      0,
-      blankIndex,
-    )
-
-  const suffix =
-    pattern.slice(
-      blankIndex + 4,
-    )
-
-  if (
-    !item.english.startsWith(prefix)
-  ) {
+  if (!item.english.startsWith(prefix)) {
     return null
   }
 
@@ -313,16 +302,11 @@ function extractBlankAnswer(
   const endIndex =
     suffix === ''
       ? item.english.length
-      : item.english.length -
-        suffix.length
+      : item.english.length - suffix.length
 
-  const answer =
-    item.english
-      .slice(
-        prefix.length,
-        endIndex,
-      )
-      .trim()
+  const answer = item.english
+    .slice(prefix.length, endIndex)
+    .trim()
 
   return answer || null
 }
@@ -331,64 +315,49 @@ function createSentenceBlank(
   item: ContentItem,
   sentences: ContentItem[],
 ) {
-  const pattern =
-    item.answer_pattern.trim()
+  const pattern = item.answer_pattern.trim()
 
-  if (
-    !pattern ||
-    !pattern.includes('____')
-  ) {
+  if (!pattern || !pattern.includes('____')) {
     return null
   }
 
-  const answer =
-    extractBlankAnswer(item)
+  const answer = extractBlankAnswer(item)
 
   if (!answer) {
     return null
   }
 
-  const otherAnswers =
+  const otherAnswers = sentences
+    .map((other) => extractBlankAnswer(other))
+    .filter(
+      (value): value is string =>
+        Boolean(value) && value !== answer,
+    )
+
+  const distractors = shuffle([
+    ...new Set(otherAnswers),
+  ]).slice(0, 3)
+
+  const fallbackWords = shuffle(
     sentences
-      .map((other) =>
-        extractBlankAnswer(other),
+      .flatMap((other) =>
+        other.english
+          .replace(/[.,!?]/g, '')
+          .split(/\s+/),
       )
       .filter(
-        (value): value is string =>
-          Boolean(value) &&
-          value !== answer,
-      )
-
-  const distractors =
-    shuffle([
-      ...new Set(otherAnswers),
-    ]).slice(0, 3)
-
-  const fallbackWords =
-    shuffle(
-      sentences
-        .flatMap((other) =>
-          other.english
-            .replace(
-              /[.,!?]/g,
-              '',
-            )
-            .split(/\s+/),
-        )
-        .filter(
-          (word) =>
-            word &&
-            word !== answer &&
-            /^[A-Za-z]+$/.test(word),
-        ),
-    )
+        (word) =>
+          word &&
+          word !== answer &&
+          /^[A-Za-z]+$/.test(word),
+      ),
+  )
 
   while (
     distractors.length < 3 &&
     fallbackWords.length > 0
   ) {
-    const candidate =
-      fallbackWords.shift()
+    const candidate = fallbackWords.shift()
 
     if (
       candidate &&
@@ -412,16 +381,11 @@ function getUsableAsset(
   item: ContentItem,
   assetMap: Map<string, Asset>,
 ) {
-  if (!item.image_key) {
-    return undefined
-  }
+  if (!item.image_key) return undefined
 
-  const asset =
-    assetMap.get(item.image_key)
+  const asset = assetMap.get(item.image_key)
 
-  if (!asset) {
-    return undefined
-  }
+  if (!asset) return undefined
 
   if (
     asset.display_type === 'emoji' &&
@@ -448,27 +412,17 @@ function createVisualOptions(
   assetMap: Map<string, Asset>,
 ): VisualOption[] {
   const correctAsset =
-    getUsableAsset(
-      item,
-      assetMap,
-    )
+    getUsableAsset(item, assetMap)
 
-  if (!correctAsset) {
-    return []
-  }
+  if (!correctAsset) return []
 
-  const distractorItems =
-    shuffle(
-      vocab.filter(
-        (other) =>
-          other.item_id !==
-            item.item_id &&
-          getUsableAsset(
-            other,
-            assetMap,
-          ),
-      ),
-    ).slice(0, 3)
+  const distractorItems = shuffle(
+    vocab.filter(
+      (other) =>
+        other.item_id !== item.item_id &&
+        getUsableAsset(other, assetMap),
+    ),
+  ).slice(0, 3)
 
   const options: VisualOption[] = [
     {
@@ -476,27 +430,56 @@ function createVisualOptions(
       english: item.english,
       asset: correctAsset,
     },
-    ...distractorItems.map(
-      (other) => ({
-        key: other.image_key,
-        english:
-          other.english,
-        asset:
-          getUsableAsset(
-            other,
-            assetMap,
-          ) as Asset,
-      }),
-    ),
+    ...distractorItems.map((other) => ({
+      key: other.image_key,
+      english: other.english,
+      asset:
+        getUsableAsset(other, assetMap) as Asset,
+    })),
   ]
 
   return shuffle(options)
+}
+
+function createLetterBank(word: string) {
+  const correctLetters = word
+    .toLowerCase()
+    .split('')
+
+  const extraCount =
+    Math.random() < 0.5 ? 2 : 3
+
+  const extras = shuffle(
+    LETTER_POOL.filter(
+      (letter) => !correctLetters.includes(letter),
+    ),
+  ).slice(0, extraCount)
+
+  return shuffle([
+    ...correctLetters,
+    ...extras,
+  ]).map((letter, index) => ({
+    id: `${letter}-${index}-${Math.random()}`,
+    letter,
+  }))
+}
+
+function isSpellableItem(
+  item: ContentItem,
+  assetMap: Map<string, Asset>,
+) {
+  return (
+    !isPersonName(item) &&
+    /^[A-Za-z]+$/.test(item.english.trim()) &&
+    Boolean(getUsableAsset(item, assetMap))
+  )
 }
 
 function buildVocabularyQuestions(
   vocab: ContentItem[],
   assets: Asset[],
   recommendedTypes: string[],
+  targetCount = 10,
 ): Question[] {
   const assetMap = new Map(
     assets.map((asset) => [
@@ -514,183 +497,139 @@ function buildVocabularyQuestions(
         type === 'missing_letter',
     ) as QuestionType[]
 
-  const availableTypes:
-    QuestionType[] = [
-      ...supportedRecommended,
-    ]
-
-  if (
-    !availableTypes.includes(
-      'word_to_image',
-    )
-  ) {
-    availableTypes.push(
-      'word_to_image',
-    )
-  }
-
-  const uniqueTypes = [
-    ...new Set(
-      availableTypes,
-    ),
+  const availableTypes: QuestionType[] = [
+    ...supportedRecommended,
+    'word_to_image',
+    'spell_word',
   ]
 
-  if (
-    uniqueTypes.length === 0
-  ) {
-    uniqueTypes.push(
-      'image_to_word',
-      'audio_to_word',
-      'word_to_image',
-      'audio_to_image',
-      'missing_letter',
-    )
-  }
+  const uniqueTypes = [
+    ...new Set(availableTypes),
+  ]
 
-  const selectedItems =
-    shuffle(vocab).slice(
-      0,
-      Math.min(
-        10,
-        vocab.length,
-      ),
-    )
-
-  return selectedItems.map(
-    (item, index) => {
-      let type =
-        uniqueTypes[
-          index %
-            uniqueTypes.length
-        ]
-
-      const asset =
-        getUsableAsset(
-          item,
-          assetMap,
-        )
-
-      if (
-        type ===
-          'image_to_word' &&
-        !asset
-      ) {
-        type =
-          'audio_to_word'
-      }
-
-      if (
-        type ===
-          'word_to_image' ||
-        type ===
-          'audio_to_image'
-      ) {
-        const visualOptions =
-          createVisualOptions(
-            item,
-            vocab,
-            assetMap,
-          )
-
-        if (
-          visualOptions.length < 2
-        ) {
-          type =
-            'audio_to_word'
-        } else {
-          return {
-            id:
-              type ===
-              'audio_to_image'
-                ? `${item.item_id}-audio-image`
-                : `${item.item_id}-word-image`,
-            type,
-            item,
-            correctAnswer:
-              item.english,
-            visualOptions,
-          }
-        }
-      }
-
-      if (
-        type === 'image_to_word'
-      ) {
-        return {
-          id: `${item.item_id}-image-word`,
-          type,
-          item,
-          asset,
-          correctAnswer:
-            item.english,
-          textOptions:
-            createEnglishOptions(
-              item,
-              vocab,
-            ),
-        }
-      }
-
-      if (
-        type === 'audio_to_word'
-      ) {
-        return {
-          id: `${item.item_id}-audio-word`,
-          type,
-          item,
-          correctAnswer:
-            item.english,
-          textOptions:
-            createEnglishOptions(
-              item,
-              vocab,
-            ),
-        }
-      }
-
-      if (
-        type === 'missing_letter'
-      ) {
-        const missing =
-          createMissingLetterQuestion(
-            item,
-          )
-
-        if (missing) {
-          return {
-            id: `${item.item_id}-missing`,
-            type,
-            item,
-            correctAnswer:
-              missing.missingLetter,
-            textOptions:
-              missing.options,
-            maskedWord:
-              missing.maskedWord,
-          }
-        }
-      }
-
-      return {
-        id: `${item.item_id}-fallback`,
-        type:
-          'audio_to_word',
-        item,
-        correctAnswer:
-          item.english,
-        textOptions:
-          createEnglishOptions(
-            item,
-            vocab,
-          ),
-      }
-    },
+  const selectedItems = shuffle(vocab).slice(
+    0,
+    Math.min(targetCount, vocab.length),
   )
+
+  return selectedItems.map((item, index) => {
+    let type =
+      uniqueTypes[index % uniqueTypes.length]
+
+    const asset =
+      getUsableAsset(item, assetMap)
+
+    if (
+      type === 'spell_word' &&
+      !isSpellableItem(item, assetMap)
+    ) {
+      type = asset
+        ? 'image_to_word'
+        : 'audio_to_word'
+    }
+
+    if (
+      type === 'image_to_word' &&
+      !asset
+    ) {
+      type = 'audio_to_word'
+    }
+
+    if (
+      type === 'word_to_image' ||
+      type === 'audio_to_image'
+    ) {
+      const visualOptions = createVisualOptions(
+        item,
+        vocab,
+        assetMap,
+      )
+
+      if (visualOptions.length < 2) {
+        type = 'audio_to_word'
+      } else {
+        return {
+          id:
+            type === 'audio_to_image'
+              ? `${item.item_id}-audio-image`
+              : `${item.item_id}-word-image`,
+          type,
+          item,
+          correctAnswer: item.english,
+          visualOptions,
+        }
+      }
+    }
+
+    if (type === 'spell_word') {
+      return {
+        id: `${item.item_id}-spell-word`,
+        type,
+        item,
+        asset,
+        correctAnswer:
+          item.english.toLowerCase(),
+        letterBank:
+          createLetterBank(item.english),
+      }
+    }
+
+    if (type === 'image_to_word') {
+      return {
+        id: `${item.item_id}-image-word`,
+        type,
+        item,
+        asset,
+        correctAnswer: item.english,
+        textOptions:
+          createEnglishOptions(item, vocab),
+      }
+    }
+
+    if (type === 'audio_to_word') {
+      return {
+        id: `${item.item_id}-audio-word`,
+        type,
+        item,
+        correctAnswer: item.english,
+        textOptions:
+          createEnglishOptions(item, vocab),
+      }
+    }
+
+    if (type === 'missing_letter') {
+      const missing =
+        createMissingLetterQuestion(item)
+
+      if (missing) {
+        return {
+          id: `${item.item_id}-missing`,
+          type,
+          item,
+          correctAnswer:
+            missing.missingLetter,
+          textOptions: missing.options,
+          maskedWord: missing.maskedWord,
+        }
+      }
+    }
+
+    return {
+      id: `${item.item_id}-fallback`,
+      type: 'audio_to_word',
+      item,
+      correctAnswer: item.english,
+      textOptions:
+        createEnglishOptions(item, vocab),
+    }
+  })
 }
 
 function buildSentenceQuestions(
-  sentences: ContentItem[],
+  lessonSentences: ContentItem[],
+  allSentences: ContentItem[],
   recommendedTypes: string[],
+  targetCount = 8,
 ): Question[] {
   const allowedTypes =
     recommendedTypes.filter(
@@ -700,9 +639,7 @@ function buildSentenceQuestions(
         type === 'listen_and_choose',
     )
 
-  if (
-    allowedTypes.length === 0
-  ) {
+  if (allowedTypes.length === 0) {
     allowedTypes.push(
       'choose_response',
       'listen_and_choose',
@@ -710,174 +647,383 @@ function buildSentenceQuestions(
     )
   }
 
-  const selectedItems =
-    shuffle(sentences).slice(
-      0,
-      Math.min(
-        10,
-        sentences.length,
-      ),
-    )
+  const candidates: Question[] = []
 
-  return selectedItems.map(
-    (item, index) => {
-      const preferredType =
-        allowedTypes[
-          index %
-            allowedTypes.length
-        ]
+  for (const item of lessonSentences) {
+    if (
+      allowedTypes.includes('choose_response') &&
+      item.prompt.trim() &&
+      item.response.trim()
+    ) {
+      const options =
+        createResponseOptions(item, allSentences)
 
-      /*
-       * 1. Choose the response
-       */
-      if (
-        preferredType ===
-          'choose_response' &&
-        item.prompt.trim() &&
-        item.response.trim()
-      ) {
-        const options =
-          createResponseOptions(
-            item,
-            sentences,
-          )
-
-        if (options.length >= 2) {
-          return {
-            id: `${item.item_id}-sentence-response`,
-            type:
-              'sentence_choose_response',
-            item,
-            correctAnswer:
-              item.response.trim(),
-            textOptions:
-              options,
-            sentencePrompt:
-              item.prompt.trim(),
-          }
-        }
-      }
-
-      /*
-       * 2. Fill in the blank
-       */
-      if (
-        preferredType ===
-        'fill_blank'
-      ) {
-        const blank =
-          createSentenceBlank(
-            item,
-            sentences,
-          )
-
-        if (
-          blank &&
-          blank.options.length >= 2
-        ) {
-          return {
-            id: `${item.item_id}-sentence-blank`,
-            type:
-              'sentence_fill_blank',
-            item,
-            correctAnswer:
-              blank.answer,
-            textOptions:
-              blank.options,
-            sentencePrompt:
-              blank.prompt,
-          }
-        }
-      }
-
-      /*
-       * 如果原本指定的題型做不了，
-       * 優先嘗試 choose_response。
-       */
-      if (
-        item.prompt.trim() &&
-        item.response.trim()
-      ) {
-        const options =
-          createResponseOptions(
-            item,
-            sentences,
-          )
-
-        if (options.length >= 2) {
-          return {
-            id: `${item.item_id}-sentence-response-fallback`,
-            type:
-              'sentence_choose_response',
-            item,
-            correctAnswer:
-              item.response.trim(),
-            textOptions:
-              options,
-            sentencePrompt:
-              item.prompt.trim(),
-          }
-        }
-      }
-
-      /*
-       * 再嘗試 fill_blank。
-       */
-      const fallbackBlank =
-        createSentenceBlank(
+      if (options.length === 4) {
+        candidates.push({
+          id: `${item.item_id}-sentence-response`,
+          type: 'sentence_choose_response',
           item,
-          sentences,
-        )
-
-      if (
-        fallbackBlank &&
-        fallbackBlank.options.length >= 2
-      ) {
-        return {
-          id: `${item.item_id}-sentence-blank-fallback`,
-          type:
-            'sentence_fill_blank',
-          item,
-          correctAnswer:
-            fallbackBlank.answer,
-          textOptions:
-            fallbackBlank.options,
-          sentencePrompt:
-            fallbackBlank.prompt,
-        }
+          correctAnswer: item.response.trim(),
+          textOptions: options,
+          sentencePrompt: item.prompt.trim(),
+        })
       }
+    }
 
-      /*
-       * 最後 fallback：
-       * listen and choose
-       */
-      return {
-        id: `${item.item_id}-sentence-listen`,
-        type:
-          'sentence_listen_choose',
+    if (allowedTypes.includes('fill_blank')) {
+      const blank = createSentenceBlank(
         item,
-        correctAnswer:
-          item.english,
+        lessonSentences,
+      )
+
+      if (blank && blank.options.length >= 2) {
+        candidates.push({
+          id: `${item.item_id}-sentence-blank`,
+          type: 'sentence_fill_blank',
+          item,
+          correctAnswer: blank.answer,
+          textOptions: blank.options,
+          sentencePrompt: blank.prompt,
+        })
+      }
+    }
+
+    if (
+      allowedTypes.includes('listen_and_choose')
+    ) {
+      candidates.push({
+        id: `${item.item_id}-sentence-listen`,
+        type: 'sentence_listen_choose',
+        item,
+        correctAnswer: item.english,
         textOptions:
           createSentenceOptions(
             item,
-            sentences,
+            allSentences,
           ),
-      }
+      })
+    }
+  }
+
+  const unique = candidates.filter(
+    (question, index, array) => {
+      const signature = [
+        question.type,
+        question.sentencePrompt ?? '',
+        question.correctAnswer,
+      ].join('|')
+
+      return (
+        array.findIndex((other) =>
+          [
+            other.type,
+            other.sentencePrompt ?? '',
+            other.correctAnswer,
+          ].join('|') === signature,
+        ) === index
+      )
     },
   )
+
+  const pool = shuffle(unique)
+  const result: Question[] = []
+
+  while (
+    result.length < targetCount &&
+    pool.length > 0
+  ) {
+    const last = result[result.length - 1]
+
+    let pickIndex = pool.findIndex(
+      (question) =>
+        !last ||
+        question.type !== last.type &&
+        question.sentencePrompt !==
+          last.sentencePrompt,
+    )
+
+    if (pickIndex < 0) pickIndex = 0
+
+    const [picked] = pool.splice(pickIndex, 1)
+    result.push(picked)
+  }
+
+  if (result.length < targetCount) {
+    const refill = shuffle(unique)
+
+    while (
+      result.length < targetCount &&
+      refill.length > 0
+    ) {
+      const next = refill.shift()
+      if (next) {
+        result.push({
+          ...next,
+          id: `${next.id}-repeat-${result.length}`,
+        })
+      }
+    }
+  }
+
+  return result.slice(0, targetCount)
 }
 
-function speakEnglish(
-  text: string,
+function splitCsv(value: string) {
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function normalizeLetterToken(token: string) {
+  const match = token.match(/[A-Za-z]/)
+  return match ? match[0].toLowerCase() : ''
+}
+
+function createFourOptions(
+  correct: string,
+  pool: string[],
 ) {
-  if (
-    typeof window ===
-      'undefined' ||
-    !(
-      'speechSynthesis' in
-      window
+  const others = shuffle([
+    ...new Set(
+      pool.filter(
+        (value) => value && value !== correct,
+      ),
+    ),
+  ]).slice(0, 3)
+
+  return shuffle([
+    correct,
+    ...others,
+  ])
+}
+
+function makeMaskedVowelWord(word: string) {
+  const lower = word.toLowerCase()
+  const index = lower
+    .split('')
+    .findIndex((char) => VOWELS.includes(char))
+
+  if (index < 0) return null
+
+  const correct = lower[index]
+  const masked = lower
+    .split('')
+    .map((char, i) =>
+      i === index ? '_' : char,
     )
+    .join('')
+
+  return {
+    masked,
+    correct,
+  }
+}
+
+function buildPhonicsQuestions(
+  phonicsRows: ContentItem[],
+  assets: Asset[],
+  targetCount = 7,
+): Question[] {
+  const assetMap = new Map(
+    assets.map((asset) => [
+      asset.image_key,
+      asset,
+    ]),
+  )
+
+  const candidates: Question[] = []
+
+  for (const row of phonicsRows) {
+    const phonicsType =
+      row.phonics_type.toLowerCase()
+    const examples = splitCsv(row.example)
+    const tokens = splitCsv(row.english)
+
+    if (
+      phonicsType === 'letter_sound' &&
+      tokens.length === examples.length
+    ) {
+      const letters = tokens
+        .map(normalizeLetterToken)
+        .filter(Boolean)
+
+      examples.forEach((word, index) => {
+        const letter = letters[index]
+        if (!letter) return
+
+        const wordOptions = createFourOptions(
+          word,
+          examples,
+        )
+
+        candidates.push({
+          id: `${row.item_id}-choose-word-${index}`,
+          type: 'phonics_choose_word',
+          item: row,
+          correctAnswer: word,
+          textOptions: wordOptions,
+          phonicsPrompt: letter,
+          phonicsWord: word,
+        })
+
+        const letterOptions = createFourOptions(
+          letter,
+          letters,
+        )
+
+        const asset = assetMap.get(word.toLowerCase())
+
+        candidates.push({
+          id: `${row.item_id}-beginning-${index}`,
+          type: 'phonics_beginning_sound',
+          item: row,
+          correctAnswer: letter,
+          textOptions: letterOptions,
+          phonicsWord: word,
+          asset:
+            asset && asset.status === 'approved'
+              ? asset
+              : undefined,
+        })
+      })
+    } else if (phonicsType === 'cvc') {
+      for (const word of examples) {
+        const data = makeMaskedVowelWord(word)
+        if (!data) continue
+
+        candidates.push({
+          id: `${row.item_id}-cvc-${word}`,
+          type: 'phonics_missing_vowel',
+          item: row,
+          correctAnswer: data.correct,
+          textOptions: shuffle(VOWELS),
+          maskedWord: data.masked,
+          phonicsWord: word,
+        })
+      }
+    } else if (phonicsType === 'blend') {
+      const blends = tokens
+        .map((token) => token.toLowerCase())
+        .filter(Boolean)
+
+      examples.forEach((word, index) => {
+        const blend = blends[index]
+        if (!blend) return
+
+        candidates.push({
+          id: `${row.item_id}-blend-word-${index}`,
+          type: 'phonics_choose_word',
+          item: row,
+          correctAnswer: word,
+          textOptions: createFourOptions(
+            word,
+            examples,
+          ),
+          phonicsPrompt: blend,
+          phonicsWord: word,
+        })
+
+        candidates.push({
+          id: `${row.item_id}-choose-blend-${index}`,
+          type: 'phonics_choose_blend',
+          item: row,
+          correctAnswer: blend,
+          textOptions: createFourOptions(
+            blend,
+            blends,
+          ),
+          phonicsWord: word,
+        })
+      })
+    }
+  }
+
+  if (candidates.length === 0) {
+    return []
+  }
+
+  const shuffled = shuffle(candidates)
+  const result: Question[] = []
+
+  while (
+    result.length < targetCount &&
+    shuffled.length > 0
+  ) {
+    const last = result[result.length - 1]
+    let index = shuffled.findIndex(
+      (question) =>
+        !last || question.type !== last.type,
+    )
+
+    if (index < 0) index = 0
+
+    const [picked] = shuffled.splice(index, 1)
+    result.push(picked)
+  }
+
+  if (result.length < targetCount) {
+    const refill = shuffle(candidates)
+
+    while (
+      result.length < targetCount &&
+      refill.length > 0
+    ) {
+      const next = refill.shift()
+      if (next) {
+        result.push({
+          ...next,
+          id: `${next.id}-repeat-${result.length}`,
+        })
+      }
+    }
+  }
+
+  return result.slice(0, targetCount)
+}
+
+function mixQuestionGroups(
+  groups: Question[][],
+) {
+  const remaining = groups.map((group) => [
+    ...group,
+  ])
+  const result: Question[] = []
+
+  while (remaining.some((group) => group.length > 0)) {
+    const availableIndexes = remaining
+      .map((group, index) => ({ group, index }))
+      .filter(({ group }) => group.length > 0)
+      .map(({ index }) => index)
+
+    const last = result[result.length - 1]
+
+    let candidates = availableIndexes.filter(
+      (index) =>
+        !last ||
+        remaining[index][0]?.type !== last.type,
+    )
+
+    if (candidates.length === 0) {
+      candidates = availableIndexes
+    }
+
+    const chosenGroup =
+      candidates[
+        Math.floor(Math.random() * candidates.length)
+      ]
+
+    const next = remaining[chosenGroup].shift()
+    if (next) result.push(next)
+  }
+
+  return result
+}
+
+function speakEnglish(text: string) {
+  if (
+    typeof window === 'undefined' ||
+    !('speechSynthesis' in window)
   ) {
     return
   }
@@ -885,26 +1031,17 @@ function speakEnglish(
   window.speechSynthesis.cancel()
 
   const utterance =
-    new SpeechSynthesisUtterance(
-      text,
-    )
+    new SpeechSynthesisUtterance(text)
 
-  utterance.lang =
-    'en-US'
-
+  utterance.lang = 'en-US'
   utterance.rate = 0.85
   utterance.pitch = 1
 
-  window.speechSynthesis.speak(
-    utterance,
-  )
+  window.speechSynthesis.speak(utterance)
 }
 
-function getImageUrl(
-  asset: Asset,
-) {
-  const file =
-    asset.image_file.trim()
+function getImageUrl(asset: Asset) {
+  const file = asset.image_file.trim()
 
   return `${IMAGE_BASE_PATH}${encodeURIComponent(
     file,
@@ -916,40 +1053,38 @@ function Visual({
   size = 'large',
 }: {
   asset: Asset
-  size?: 'large' | 'small'
+  size?: 'large' | 'small' | 'inline'
 }) {
   if (
-    asset.display_type ===
-      'emoji' &&
+    asset.display_type === 'emoji' &&
     asset.emoji
   ) {
     return (
-      <div
+      <span
         className={
           size === 'large'
             ? 'text-8xl'
-            : 'text-6xl'
+            : size === 'small'
+              ? 'text-6xl'
+              : 'text-5xl'
         }
       >
         {asset.emoji}
-      </div>
+      </span>
     )
   }
 
-  if (
-    asset.display_type ===
-    'image'
-  ) {
+  if (asset.display_type === 'image') {
     return (
       <img
-        src={getImageUrl(
-          asset,
-        )}
+        src={getImageUrl(asset)}
         alt=""
         className={
           size === 'large'
             ? 'h-52 w-52 object-contain'
-            : 'h-28 w-28 object-contain'
+            : size === 'small'
+              ? 'h-28 w-28 object-contain'
+              : 'h-16 w-16 object-contain'
         }
       />
     )
@@ -959,24 +1094,14 @@ function Visual({
 }
 
 export default function Practice() {
-  const location =
-    useLocation()
-
-  const navigate =
-    useNavigate()
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const params =
-    new URLSearchParams(
-      location.search,
-    )
+    new URLSearchParams(location.search)
 
-  const lessonId =
-    params.get('lesson') ??
-    ''
-
-  const rawMode =
-    params.get('mode') ??
-    'vocab'
+  const lessonId = params.get('lesson') ?? ''
+  const rawMode = params.get('mode') ?? 'vocab'
 
   const mode: PracticeMode =
     rawMode === 'sentence' ||
@@ -985,119 +1110,145 @@ export default function Practice() {
       ? rawMode
       : 'vocab'
 
-  const [
-    questions,
-    setQuestions,
-  ] =
+  const [questions, setQuestions] =
     useState<Question[]>([])
+  const [currentIndex, setCurrentIndex] =
+    useState(0)
+  const [selected, setSelected] =
+    useState<string | null>(null)
+  const [score, setScore] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const [
-    currentIndex,
-    setCurrentIndex,
-  ] = useState(0)
-
-  const [
-    selected,
-    setSelected,
-  ] =
-    useState<
-      string | null
-    >(null)
-
-  const [
-    score,
-    setScore,
-  ] = useState(0)
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true)
-
-  const [
-    error,
-    setError,
-  ] = useState('')
+  const [spellPickedIds, setSpellPickedIds] =
+    useState<string[]>([])
+  const [spellPickedLetters, setSpellPickedLetters] =
+    useState<string[]>([])
+  const [spellError, setSpellError] =
+    useState(false)
 
   useEffect(() => {
     async function load() {
       try {
-        const data =
-          await loadAppData()
+        const data = await loadAppData()
 
-        if (
-          mode ===
-          'sentence'
-        ) {
-          const sentences =
-            getSentences(
-              data.content,
-              lessonId,
-            )
+        const vocab = getVocabulary(
+          data.content,
+          lessonId,
+        )
+        const sentences = getSentences(
+          data.content,
+          lessonId,
+        )
+        const phonics = getPhonics(
+          data.content,
+          lessonId,
+        )
 
-          if (
-            sentences.length ===
-            0
-          ) {
+        const allSentences = data.content.filter(
+          (item) =>
+            item.type === 'sentence' &&
+            item.english.trim() !== '',
+        )
+
+        const vocabTypes = getRecommendedTypes(
+          data.lessonPractice,
+          lessonId,
+          'vocab',
+        )
+
+        const sentenceTypes = getRecommendedTypes(
+          data.lessonPractice,
+          lessonId,
+          'sentence',
+        )
+
+        if (mode === 'sentence') {
+          if (sentences.length === 0) {
             throw new Error(
               'No sentence practice found for this lesson.',
             )
           }
 
-          const types =
-            getRecommendedTypes(
-              data.lessonPractice,
-              lessonId,
-              'sentence',
-            )
-
           setQuestions(
             buildSentenceQuestions(
               sentences,
-              types,
+              allSentences,
+              sentenceTypes,
+              10,
             ),
           )
-
           return
         }
 
-        /*
-         * Daily 暫時仍使用 Vocabulary。
-         * 等 Phonics 完成後再改成 4 + 3 + 3。
-         */
-        const vocab =
-          getVocabulary(
-            data.content,
-            lessonId,
-          )
+        if (mode === 'phonics') {
+          const phonicsQuestions =
+            buildPhonicsQuestions(
+              phonics,
+              data.assets,
+              10,
+            )
 
-        if (
-          vocab.length ===
-          0
-        ) {
+          if (phonicsQuestions.length === 0) {
+            throw new Error(
+              'No phonics practice found for this lesson.',
+            )
+          }
+
+          setQuestions(phonicsQuestions)
+          return
+        }
+
+        if (vocab.length === 0) {
           throw new Error(
             'No vocabulary found for this lesson.',
           )
         }
 
-        const types =
-          getRecommendedTypes(
-            data.lessonPractice,
-            lessonId,
-            'vocab',
-          )
+        if (mode === 'daily') {
+          const vocabQuestions =
+            buildVocabularyQuestions(
+              vocab,
+              data.assets,
+              vocabTypes,
+              10,
+            )
+
+          const sentenceQuestions =
+            buildSentenceQuestions(
+              sentences,
+              allSentences,
+              sentenceTypes,
+              8,
+            )
+
+          const phonicsQuestions =
+            buildPhonicsQuestions(
+              phonics,
+              data.assets,
+              7,
+            )
+
+          const mixed = mixQuestionGroups([
+            shuffle(vocabQuestions),
+            shuffle(sentenceQuestions),
+            shuffle(phonicsQuestions),
+          ])
+
+          setQuestions(mixed.slice(0, 25))
+          return
+        }
 
         setQuestions(
           buildVocabularyQuestions(
             vocab,
             data.assets,
-            types,
+            vocabTypes,
+            10,
           ),
         )
       } catch (err) {
-        setError(
-          String(err),
-        )
+        setError(String(err))
       } finally {
         setLoading(false)
       }
@@ -1106,88 +1257,144 @@ export default function Practice() {
     if (lessonId) {
       load()
     } else {
-      setError(
-        'Missing lesson id.',
-      )
-
+      setError('Missing lesson id.')
       setLoading(false)
     }
 
     return () => {
       if (
-        typeof window !==
-          'undefined' &&
-        'speechSynthesis' in
-          window
+        typeof window !== 'undefined' &&
+        'speechSynthesis' in window
       ) {
-        window
-          .speechSynthesis
-          .cancel()
+        window.speechSynthesis.cancel()
       }
     }
-  }, [
-    lessonId,
-    mode,
-  ])
+  }, [lessonId, mode])
 
-  const currentQuestion =
-    useMemo(
-      () =>
-        questions[
-          currentIndex
-        ],
-      [
-        questions,
-        currentIndex,
-      ],
-    )
+  const currentQuestion = useMemo(
+    () => questions[currentIndex],
+    [questions, currentIndex],
+  )
+
+  useEffect(() => {
+    setSelected(null)
+    setSpellPickedIds([])
+    setSpellPickedLetters([])
+    setSpellError(false)
+
+    if (!currentQuestion) return
+
+    let autoText = ''
+
+    if (currentQuestion.type === 'spell_word') {
+      autoText = `How do you spell ${currentQuestion.item.english}?`
+    } else if (
+      currentQuestion.type === 'audio_to_word' ||
+      currentQuestion.type === 'audio_to_image'
+    ) {
+      autoText = currentQuestion.item.english
+    } else if (
+      currentQuestion.type === 'sentence_listen_choose'
+    ) {
+      autoText = currentQuestion.item.english
+    }
+
+    if (!autoText) return
+
+    const timer = window.setTimeout(() => {
+      speakEnglish(autoText)
+    }, 450)
+
+    return () => window.clearTimeout(timer)
+  }, [currentQuestion?.id])
 
   const finished =
     questions.length > 0 &&
-    currentIndex >=
-      questions.length
+    currentIndex >= questions.length
 
-  function chooseAnswer(
-    answer: string,
-  ) {
+  function chooseAnswer(answer: string) {
+    if (!currentQuestion || selected) return
+
+    setSelected(answer)
+
+    if (answer === currentQuestion.correctAnswer) {
+      setScore((value) => value + 1)
+    }
+  }
+
+  function pickSpellLetter(button: LetterButton) {
     if (
       !currentQuestion ||
-      selected
+      currentQuestion.type !== 'spell_word' ||
+      selected ||
+      spellPickedIds.includes(button.id)
     ) {
       return
     }
 
-    setSelected(answer)
+    const target =
+      currentQuestion.correctAnswer.toLowerCase()
 
-    if (
-      answer ===
-      currentQuestion.correctAnswer
-    ) {
-      setScore(
-        (value) =>
-          value + 1,
-      )
+    if (spellPickedLetters.length >= target.length) {
+      return
     }
+
+    const nextIds = [
+      ...spellPickedIds,
+      button.id,
+    ]
+    const nextLetters = [
+      ...spellPickedLetters,
+      button.letter,
+    ]
+
+    setSpellPickedIds(nextIds)
+    setSpellPickedLetters(nextLetters)
+    setSpellError(false)
+
+    if (nextLetters.length === target.length) {
+      const attempt = nextLetters.join('')
+
+      if (attempt === target) {
+        setSelected(attempt)
+        setScore((value) => value + 1)
+      } else {
+        setSpellError(true)
+      }
+    }
+  }
+
+  function removeSpellLetter() {
+    if (selected || spellPickedIds.length === 0) {
+      return
+    }
+
+    setSpellPickedIds((values) => values.slice(0, -1))
+    setSpellPickedLetters((values) => values.slice(0, -1))
+    setSpellError(false)
+  }
+
+  function clearSpellLetters() {
+    if (selected) return
+
+    setSpellPickedIds([])
+    setSpellPickedLetters([])
+    setSpellError(false)
   }
 
   function nextQuestion() {
     if (
-      typeof window !==
-        'undefined' &&
-      'speechSynthesis' in
-        window
+      typeof window !== 'undefined' &&
+      'speechSynthesis' in window
     ) {
-      window
-        .speechSynthesis
-        .cancel()
+      window.speechSynthesis.cancel()
     }
 
     setSelected(null)
-
-    setCurrentIndex(
-      (value) =>
-        value + 1,
-    )
+    setSpellPickedIds([])
+    setSpellPickedLetters([])
+    setSpellError(false)
+    setCurrentIndex((value) => value + 1)
   }
 
   function goBack() {
@@ -1227,8 +1434,7 @@ export default function Practice() {
   }
 
   if (finished) {
-    const isDaily =
-      mode === 'daily'
+    const isDaily = mode === 'daily'
 
     return (
       <main className="mx-auto max-w-3xl p-6">
@@ -1236,10 +1442,11 @@ export default function Practice() {
           <div className="text-6xl">
             {isDaily
               ? '🌱'
-              : mode ===
-                  'sentence'
+              : mode === 'sentence'
                 ? '💬'
-                : '📚'}
+                : mode === 'phonics'
+                  ? '🔤'
+                  : '📚'}
           </div>
 
           <h1 className="mt-4 text-3xl font-bold">
@@ -1247,17 +1454,12 @@ export default function Practice() {
           </h1>
 
           <p className="mt-3 text-lg text-slate-600">
-            You got {score} /{' '}
-            {questions.length}{' '}
-            correct.
+            You got {score} / {questions.length} correct.
           </p>
 
           {isDaily && (
             <>
-              <div className="mt-6 text-4xl">
-                💧
-              </div>
-
+              <div className="mt-6 text-4xl">💧</div>
               <p className="mt-2 font-semibold text-emerald-600">
                 You earned water for your tree!
               </p>
@@ -1282,53 +1484,38 @@ export default function Practice() {
     )
   }
 
-  if (!currentQuestion) {
-    return null
-  }
+  if (!currentQuestion) return null
 
   const progress =
-    ((currentIndex + 1) /
-      questions.length) *
-    100
+    ((currentIndex + 1) / questions.length) * 100
 
   const usesVisualOptions =
-    currentQuestion.type ===
-      'word_to_image' ||
-    currentQuestion.type ===
-      'audio_to_image'
+    currentQuestion.type === 'word_to_image' ||
+    currentQuestion.type === 'audio_to_image'
+
+  const isSpellQuestion =
+    currentQuestion.type === 'spell_word'
 
   return (
     <main className="mx-auto max-w-3xl p-6">
-
       <section className="mb-6">
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
-            Question{' '}
-            {currentIndex + 1}{' '}
-            /{' '}
-            {questions.length}
+            Question {currentIndex + 1} / {questions.length}
           </span>
-
-          <span>
-            Score {score}
-          </span>
+          <span>Score {score}</span>
         </div>
 
         <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-200">
           <div
             className="h-full bg-emerald-500 transition-all"
-            style={{
-              width: `${progress}%`,
-            }}
+            style={{ width: `${progress}%` }}
           />
         </div>
       </section>
 
       <section className="rounded-3xl bg-white p-8 shadow-sm">
-
-        {/* Vocabulary: image -> word */}
-        {currentQuestion.type ===
-          'image_to_word' && (
+        {currentQuestion.type === 'image_to_word' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Choose the word.
@@ -1336,11 +1523,7 @@ export default function Practice() {
 
             <div className="mt-6 flex justify-center">
               {currentQuestion.asset && (
-                <Visual
-                  asset={
-                    currentQuestion.asset
-                  }
-                />
+                <Visual asset={currentQuestion.asset} />
               )}
             </div>
 
@@ -1348,9 +1531,7 @@ export default function Practice() {
               <button
                 type="button"
                 onClick={() =>
-                  speakEnglish(
-                    'Choose the word.',
-                  )
+                  speakEnglish('Choose the word.')
                 }
                 className="rounded-full bg-sky-50 px-4 py-3 text-2xl transition hover:bg-sky-100"
               >
@@ -1360,9 +1541,7 @@ export default function Practice() {
           </>
         )}
 
-        {/* Vocabulary: audio -> word */}
-        {currentQuestion.type ===
-          'audio_to_word' && (
+        {currentQuestion.type === 'audio_to_word' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Listen and choose.
@@ -1372,49 +1551,34 @@ export default function Practice() {
               <button
                 type="button"
                 onClick={() =>
-                  speakEnglish(
-                    currentQuestion
-                      .item
-                      .english,
-                  )
+                  speakEnglish(currentQuestion.item.english)
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
               >
                 🔊
               </button>
-
               <p className="mt-3 text-sm text-slate-400">
-                Tap to listen
+                Tap to listen again
               </p>
             </div>
           </>
         )}
 
-        {/* Vocabulary: word -> image */}
-        {currentQuestion.type ===
-          'word_to_image' && (
+        {currentQuestion.type === 'word_to_image' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Choose the picture.
             </p>
 
             <h1 className="mt-4 text-center text-5xl font-bold text-slate-800">
-              {
-                currentQuestion
-                  .item
-                  .english
-              }
+              {currentQuestion.item.english}
             </h1>
 
             <div className="mt-3 text-center">
               <button
                 type="button"
                 onClick={() =>
-                  speakEnglish(
-                    currentQuestion
-                      .item
-                      .english,
-                  )
+                  speakEnglish(currentQuestion.item.english)
                 }
                 className="rounded-full px-4 py-2 text-2xl hover:bg-slate-100"
               >
@@ -1424,9 +1588,7 @@ export default function Practice() {
           </>
         )}
 
-        {/* Vocabulary: audio -> image */}
-        {currentQuestion.type ===
-          'audio_to_image' && (
+        {currentQuestion.type === 'audio_to_image' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Listen and choose the picture.
@@ -1436,27 +1598,20 @@ export default function Practice() {
               <button
                 type="button"
                 onClick={() =>
-                  speakEnglish(
-                    currentQuestion
-                      .item
-                      .english,
-                  )
+                  speakEnglish(currentQuestion.item.english)
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
               >
                 🔊
               </button>
-
               <p className="mt-3 text-sm text-slate-400">
-                Tap to listen
+                Tap to listen again
               </p>
             </div>
           </>
         )}
 
-        {/* Vocabulary: missing letter */}
-        {currentQuestion.type ===
-          'missing_letter' && (
+        {currentQuestion.type === 'missing_letter' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Choose the missing letter.
@@ -1464,20 +1619,13 @@ export default function Practice() {
 
             <div className="mt-5 text-center">
               <div className="text-5xl font-bold tracking-[0.18em] text-slate-800">
-                {
-                  currentQuestion
-                    .maskedWord
-                }
+                {currentQuestion.maskedWord}
               </div>
 
               <button
                 type="button"
                 onClick={() =>
-                  speakEnglish(
-                    currentQuestion
-                      .item
-                      .english,
-                  )
+                  speakEnglish(currentQuestion.item.english)
                 }
                 className="mt-4 rounded-full bg-sky-50 px-4 py-3 text-3xl hover:bg-sky-100"
               >
@@ -1487,45 +1635,126 @@ export default function Practice() {
           </>
         )}
 
-        {/* Sentence: choose response */}
-        {currentQuestion.type ===
-          'sentence_choose_response' && (
+        {currentQuestion.type === 'spell_word' && (
+          <>
+            <div className="flex flex-wrap items-center justify-center gap-3 text-center text-2xl font-bold text-slate-700 sm:text-3xl">
+              <span>How do you spell</span>
+              {currentQuestion.asset && (
+                <Visual
+                  asset={currentQuestion.asset}
+                  size="inline"
+                />
+              )}
+              <span>?</span>
+            </div>
+
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() =>
+                  speakEnglish(
+                    `How do you spell ${currentQuestion.item.english}?`,
+                  )
+                }
+                className="rounded-full bg-amber-50 px-5 py-4 text-3xl transition hover:bg-amber-100"
+              >
+                🔊
+              </button>
+              <p className="mt-2 text-sm text-slate-400">
+                Tap to hear the question again
+              </p>
+            </div>
+
+            <div className="mt-8 flex min-h-16 flex-wrap items-center justify-center gap-2">
+              {currentQuestion.correctAnswer
+                .split('')
+                .map((_, index) => (
+                  <div
+                    key={index}
+                    className="flex h-14 w-12 items-center justify-center border-b-4 border-slate-400 text-3xl font-bold text-slate-800"
+                  >
+                    {spellPickedLetters[index] ?? ''}
+                  </div>
+                ))}
+            </div>
+
+            {spellError && (
+              <p className="mt-4 text-center font-bold text-amber-600">
+                Try again 🙂
+              </p>
+            )}
+
+            <div className="mt-7 flex flex-wrap justify-center gap-3">
+              {currentQuestion.letterBank?.map((button) => {
+                const used = spellPickedIds.includes(button.id)
+
+                return (
+                  <button
+                    key={button.id}
+                    type="button"
+                    disabled={used || selected !== null}
+                    onClick={() => pickSpellLetter(button)}
+                    className={
+                      used
+                        ? 'h-14 w-14 rounded-2xl bg-slate-100 text-xl font-bold text-slate-300'
+                        : 'h-14 w-14 rounded-2xl border-2 border-slate-200 bg-white text-xl font-bold text-slate-800 shadow-sm transition hover:border-amber-400'
+                    }
+                  >
+                    {button.letter}
+                  </button>
+                )
+              })}
+            </div>
+
+            {!selected && (
+              <div className="mt-6 flex justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={removeSpellLetter}
+                  disabled={spellPickedIds.length === 0}
+                  className="rounded-xl bg-slate-100 px-5 py-3 font-semibold text-slate-600 disabled:opacity-40"
+                >
+                  ⌫ Delete
+                </button>
+
+                <button
+                  type="button"
+                  onClick={clearSpellLetters}
+                  disabled={spellPickedIds.length === 0}
+                  className="rounded-xl bg-slate-100 px-5 py-3 font-semibold text-slate-600 disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
+        {currentQuestion.type === 'sentence_choose_response' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Choose the best response.
             </p>
 
             <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
-              {
-                currentQuestion
-                  .sentencePrompt
-              }
+              {currentQuestion.sentencePrompt}
             </div>
 
             <button
               type="button"
               onClick={() =>
                 speakEnglish(
-                  currentQuestion
-                    .sentencePrompt ??
-                    '',
+                  currentQuestion.sentencePrompt ?? '',
                 )
               }
               className="mx-auto mt-5 block rounded-full bg-violet-50 px-5 py-4 text-3xl transition hover:bg-violet-100"
-              aria-label="Play question"
             >
               🔊
             </button>
-
-            <p className="mt-2 text-center text-sm text-slate-400">
-              Tap to hear the question
-            </p>
           </>
         )}
 
-        {/* Sentence: listen and choose */}
-        {currentQuestion.type ===
-          'sentence_listen_choose' && (
+        {currentQuestion.type === 'sentence_listen_choose' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Listen and choose the sentence.
@@ -1535,47 +1764,33 @@ export default function Practice() {
               <button
                 type="button"
                 onClick={() =>
-                  speakEnglish(
-                    currentQuestion
-                      .item
-                      .english,
-                  )
+                  speakEnglish(currentQuestion.item.english)
                 }
                 className="rounded-full bg-violet-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
               >
                 🔊
               </button>
-
               <p className="mt-3 text-sm text-slate-400">
-                Tap to listen
+                Tap to listen again
               </p>
             </div>
           </>
         )}
 
-        {/* Sentence: fill blank */}
-        {currentQuestion.type ===
-          'sentence_fill_blank' && (
+        {currentQuestion.type === 'sentence_fill_blank' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Choose the missing word.
             </p>
 
             <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
-              {
-                currentQuestion
-                  .sentencePrompt
-              }
+              {currentQuestion.sentencePrompt}
             </div>
 
             <button
               type="button"
               onClick={() =>
-                speakEnglish(
-                  currentQuestion
-                    .item
-                    .english,
-                )
+                speakEnglish('Choose the missing word.')
               }
               className="mx-auto mt-5 block rounded-full bg-violet-50 px-4 py-3 text-3xl hover:bg-violet-100"
             >
@@ -1584,18 +1799,98 @@ export default function Practice() {
           </>
         )}
 
-        {/* Image choices */}
-        {usesVisualOptions ? (
-          <div className="mt-8 grid grid-cols-2 gap-4">
-            {currentQuestion.visualOptions?.map(
-              (option) => {
-                const isCorrect =
-                  option.english ===
-                  currentQuestion.correctAnswer
+        {currentQuestion.type === 'phonics_choose_word' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Which word starts with this sound?
+            </p>
 
+            <div className="mt-6 text-center text-6xl font-bold text-slate-800">
+              {currentQuestion.phonicsPrompt}
+            </div>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_beginning_sound' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Which letter does this word start with?
+            </p>
+
+            <div className="mt-6 flex justify-center">
+              {currentQuestion.asset ? (
+                <Visual asset={currentQuestion.asset} />
+              ) : (
+                <div className="text-center text-4xl font-bold text-slate-800">
+                  {currentQuestion.phonicsWord}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
+            >
+              🔊
+            </button>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_missing_vowel' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the missing vowel.
+            </p>
+
+            <div className="mt-6 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
+              {currentQuestion.maskedWord}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
+            >
+              🔊
+            </button>
+          </>
+        )}
+
+        {currentQuestion.type === 'phonics_choose_blend' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the beginning sound.
+            </p>
+
+            <div className="mt-6 text-center text-4xl font-bold text-slate-800">
+              {currentQuestion.phonicsWord}
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(currentQuestion.phonicsWord ?? '')
+              }
+              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
+            >
+              🔊
+            </button>
+          </>
+        )}
+
+        {!isSpellQuestion &&
+          (usesVisualOptions ? (
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              {currentQuestion.visualOptions?.map((option) => {
+                const isCorrect =
+                  option.english === currentQuestion.correctAnswer
                 const isSelected =
-                  option.english ===
-                  selected
+                  option.english === selected
 
                 let className =
                   'flex min-h-40 items-center justify-center rounded-2xl border-2 p-4 transition '
@@ -1603,14 +1898,10 @@ export default function Practice() {
                 if (!selected) {
                   className +=
                     'border-slate-200 bg-white hover:border-emerald-400'
-                } else if (
-                  isCorrect
-                ) {
+                } else if (isCorrect) {
                   className +=
                     'border-emerald-500 bg-emerald-50'
-                } else if (
-                  isSelected
-                ) {
+                } else if (isSelected) {
                   className +=
                     'border-red-400 bg-red-50'
                 } else {
@@ -1620,45 +1911,26 @@ export default function Practice() {
 
                 return (
                   <button
-                    key={
-                      option.key
-                    }
+                    key={option.key}
                     type="button"
-                    onClick={() =>
-                      chooseAnswer(
-                        option.english,
-                      )
-                    }
-                    disabled={
-                      selected !==
-                      null
-                    }
-                    className={
-                      className
-                    }
+                    onClick={() => chooseAnswer(option.english)}
+                    disabled={selected !== null}
+                    className={className}
                   >
                     <Visual
-                      asset={
-                        option.asset
-                      }
+                      asset={option.asset}
                       size="small"
                     />
                   </button>
                 )
-              },
-            )}
-          </div>
-        ) : (
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
-            {currentQuestion.textOptions?.map(
-              (option) => {
+              })}
+            </div>
+          ) : (
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              {currentQuestion.textOptions?.map((option) => {
                 const isCorrect =
-                  option ===
-                  currentQuestion.correctAnswer
-
-                const isSelected =
-                  option ===
-                  selected
+                  option === currentQuestion.correctAnswer
+                const isSelected = option === selected
 
                 let className =
                   'rounded-2xl border-2 p-4 text-lg font-semibold transition '
@@ -1666,14 +1938,10 @@ export default function Practice() {
                 if (!selected) {
                   className +=
                     'border-slate-200 bg-white hover:border-emerald-400'
-                } else if (
-                  isCorrect
-                ) {
+                } else if (isCorrect) {
                   className +=
                     'border-emerald-500 bg-emerald-50 text-emerald-700'
-                } else if (
-                  isSelected
-                ) {
+                } else if (isSelected) {
                   className +=
                     'border-red-400 bg-red-50 text-red-600'
                 } else {
@@ -1685,54 +1953,41 @@ export default function Practice() {
                   <button
                     key={option}
                     type="button"
-                    onClick={() =>
-                      chooseAnswer(
-                        option,
-                      )
-                    }
-                    disabled={
-                      selected !==
-                      null
-                    }
-                    className={
-                      className
-                    }
+                    onClick={() => chooseAnswer(option)}
+                    disabled={selected !== null}
+                    className={className}
                   >
                     {option}
                   </button>
                 )
-              },
-            )}
-          </div>
-        )}
+              })}
+            </div>
+          ))}
 
         {selected && (
           <div className="mt-6 text-center">
             <p
               className={
-                selected ===
-                currentQuestion.correctAnswer
+                selected === currentQuestion.correctAnswer
                   ? 'font-bold text-emerald-600'
                   : 'font-bold text-red-500'
               }
             >
-              {selected ===
-              currentQuestion.correctAnswer
+              {selected === currentQuestion.correctAnswer
                 ? 'Correct! 🎉'
                 : `Answer: ${currentQuestion.correctAnswer}`}
             </p>
 
             <button
               type="button"
-              onClick={
-                nextQuestion
-              }
+              onClick={nextQuestion}
               className="mt-4 rounded-xl bg-slate-800 px-5 py-3 font-semibold text-white"
             >
               Next →
             </button>
           </div>
         )}
+
       </section>
     </main>
   )
