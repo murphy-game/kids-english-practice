@@ -22,6 +22,7 @@ type QuestionType =
   | 'missing_letter'
   | 'sentence_listen_choose'
   | 'sentence_fill_blank'
+  | 'sentence_choose_response'
 
 type VisualOption = {
   key: string
@@ -141,6 +142,77 @@ function createSentenceOptions(
   ])
 }
 
+function createResponseOptions(
+  item: ContentItem,
+  sentences: ContentItem[],
+) {
+  const correct =
+    item.response.trim()
+
+  if (!correct) {
+    return []
+  }
+
+  const responsePool = [
+    ...new Set(
+      sentences
+        .filter(
+          (other) =>
+            other.item_id !== item.item_id &&
+            other.response.trim() !== '' &&
+            other.response.trim() !== correct,
+        )
+        .map((other) =>
+          other.response.trim(),
+        ),
+    ),
+  ]
+
+  const distractors =
+    shuffle(responsePool).slice(0, 3)
+
+  /*
+   * 如果同一課 response 太少，
+   * 再用該課其他 sentence 補選項。
+   */
+  if (distractors.length < 3) {
+    const sentencePool = shuffle(
+      sentences
+        .filter(
+          (other) =>
+            other.item_id !== item.item_id &&
+            other.english.trim() !== '' &&
+            other.english.trim() !== correct &&
+            !distractors.includes(
+              other.english.trim(),
+            ),
+        )
+        .map((other) =>
+          other.english.trim(),
+        ),
+    )
+
+    for (const candidate of sentencePool) {
+      if (distractors.length >= 3) {
+        break
+      }
+
+      if (
+        candidate &&
+        candidate !== correct &&
+        !distractors.includes(candidate)
+      ) {
+        distractors.push(candidate)
+      }
+    }
+  }
+
+  return shuffle([
+    correct,
+    ...distractors.slice(0, 3),
+  ])
+}
+
 function createMissingLetterQuestion(
   item: ContentItem,
 ) {
@@ -198,133 +270,6 @@ function createMissingLetterQuestion(
   }
 }
 
-function createSentenceBlank(
-  item: ContentItem,
-  sentences: ContentItem[],
-) {
-  const pattern =
-    item.answer_pattern.trim()
-
-  if (
-    pattern &&
-    pattern.includes('____')
-  ) {
-    const blankIndex =
-      pattern.indexOf('____')
-
-    const prefix =
-      pattern.slice(
-        0,
-        blankIndex,
-      )
-
-    const suffix =
-      pattern.slice(
-        blankIndex + 4,
-      )
-
-    let answer = ''
-
-    if (
-      item.english.startsWith(prefix) &&
-      (
-        suffix === '' ||
-        item.english.endsWith(suffix)
-      )
-    ) {
-      const endIndex =
-        suffix === ''
-          ? item.english.length
-          : item.english.length -
-            suffix.length
-
-      answer =
-        item.english
-          .slice(
-            prefix.length,
-            endIndex,
-          )
-          .trim()
-    }
-
-    if (answer) {
-      const otherAnswers =
-        sentences
-          .map((other) =>
-            extractBlankAnswer(
-              other,
-            ),
-          )
-          .filter(
-            (value): value is string =>
-              Boolean(value) &&
-              value !== answer,
-          )
-
-      const distractors =
-        shuffle([
-          ...new Set(
-            otherAnswers,
-          ),
-        ]).slice(0, 3)
-
-      const fallbackWords =
-        shuffle(
-          sentences
-            .flatMap((other) =>
-              other.english
-                .replace(
-                  /[.,!?]/g,
-                  '',
-                )
-                .split(/\s+/),
-            )
-            .filter(
-              (word) =>
-                word &&
-                word !== answer &&
-                /^[A-Za-z]+$/.test(
-                  word,
-                ),
-            ),
-        )
-
-      while (
-        distractors.length < 3 &&
-        fallbackWords.length > 0
-      ) {
-        const candidate =
-          fallbackWords.shift()
-
-        if (
-          candidate &&
-          !distractors.includes(
-            candidate,
-          )
-        ) {
-          distractors.push(
-            candidate,
-          )
-        }
-      }
-
-      return {
-        prompt: pattern,
-        answer,
-        options: shuffle([
-          answer,
-          ...distractors.slice(
-            0,
-            3,
-          ),
-        ]),
-      }
-    }
-  }
-
-  return null
-}
-
 function extractBlankAnswer(
   item: ContentItem,
 ) {
@@ -353,18 +298,14 @@ function extractBlankAnswer(
     )
 
   if (
-    !item.english.startsWith(
-      prefix,
-    )
+    !item.english.startsWith(prefix)
   ) {
     return null
   }
 
   if (
     suffix &&
-    !item.english.endsWith(
-      suffix,
-    )
+    !item.english.endsWith(suffix)
   ) {
     return null
   }
@@ -386,6 +327,87 @@ function extractBlankAnswer(
   return answer || null
 }
 
+function createSentenceBlank(
+  item: ContentItem,
+  sentences: ContentItem[],
+) {
+  const pattern =
+    item.answer_pattern.trim()
+
+  if (
+    !pattern ||
+    !pattern.includes('____')
+  ) {
+    return null
+  }
+
+  const answer =
+    extractBlankAnswer(item)
+
+  if (!answer) {
+    return null
+  }
+
+  const otherAnswers =
+    sentences
+      .map((other) =>
+        extractBlankAnswer(other),
+      )
+      .filter(
+        (value): value is string =>
+          Boolean(value) &&
+          value !== answer,
+      )
+
+  const distractors =
+    shuffle([
+      ...new Set(otherAnswers),
+    ]).slice(0, 3)
+
+  const fallbackWords =
+    shuffle(
+      sentences
+        .flatMap((other) =>
+          other.english
+            .replace(
+              /[.,!?]/g,
+              '',
+            )
+            .split(/\s+/),
+        )
+        .filter(
+          (word) =>
+            word &&
+            word !== answer &&
+            /^[A-Za-z]+$/.test(word),
+        ),
+    )
+
+  while (
+    distractors.length < 3 &&
+    fallbackWords.length > 0
+  ) {
+    const candidate =
+      fallbackWords.shift()
+
+    if (
+      candidate &&
+      !distractors.includes(candidate)
+    ) {
+      distractors.push(candidate)
+    }
+  }
+
+  return {
+    prompt: pattern,
+    answer,
+    options: shuffle([
+      answer,
+      ...distractors.slice(0, 3),
+    ]),
+  }
+}
+
 function getUsableAsset(
   item: ContentItem,
   assetMap: Map<string, Asset>,
@@ -395,9 +417,7 @@ function getUsableAsset(
   }
 
   const asset =
-    assetMap.get(
-      item.image_key,
-    )
+    assetMap.get(item.image_key)
 
   if (!asset) {
     return undefined
@@ -488,14 +508,10 @@ function buildVocabularyQuestions(
   const supportedRecommended =
     recommendedTypes.filter(
       (type) =>
-        type ===
-          'image_to_word' ||
-        type ===
-          'audio_to_word' ||
-        type ===
-          'audio_to_image' ||
-        type ===
-          'missing_letter',
+        type === 'image_to_word' ||
+        type === 'audio_to_word' ||
+        type === 'audio_to_image' ||
+        type === 'missing_letter',
     ) as QuestionType[]
 
   const availableTypes:
@@ -577,8 +593,7 @@ function buildVocabularyQuestions(
           )
 
         if (
-          visualOptions.length <
-          2
+          visualOptions.length < 2
         ) {
           type =
             'audio_to_word'
@@ -599,8 +614,7 @@ function buildVocabularyQuestions(
       }
 
       if (
-        type ===
-        'image_to_word'
+        type === 'image_to_word'
       ) {
         return {
           id: `${item.item_id}-image-word`,
@@ -618,8 +632,7 @@ function buildVocabularyQuestions(
       }
 
       if (
-        type ===
-        'audio_to_word'
+        type === 'audio_to_word'
       ) {
         return {
           id: `${item.item_id}-audio-word`,
@@ -636,8 +649,7 @@ function buildVocabularyQuestions(
       }
 
       if (
-        type ===
-        'missing_letter'
+        type === 'missing_letter'
       ) {
         const missing =
           createMissingLetterQuestion(
@@ -683,16 +695,16 @@ function buildSentenceQuestions(
   const allowedTypes =
     recommendedTypes.filter(
       (type) =>
-        type ===
-          'fill_blank' ||
-        type ===
-          'listen_and_choose',
+        type === 'choose_response' ||
+        type === 'fill_blank' ||
+        type === 'listen_and_choose',
     )
 
   if (
     allowedTypes.length === 0
   ) {
     allowedTypes.push(
+      'choose_response',
       'listen_and_choose',
       'fill_blank',
     )
@@ -709,14 +721,48 @@ function buildSentenceQuestions(
 
   return selectedItems.map(
     (item, index) => {
-      const requestedType =
+      const preferredType =
         allowedTypes[
           index %
             allowedTypes.length
         ]
 
+      /*
+       * 1. Choose the response
+       */
       if (
-        requestedType ===
+        preferredType ===
+          'choose_response' &&
+        item.prompt.trim() &&
+        item.response.trim()
+      ) {
+        const options =
+          createResponseOptions(
+            item,
+            sentences,
+          )
+
+        if (options.length >= 2) {
+          return {
+            id: `${item.item_id}-sentence-response`,
+            type:
+              'sentence_choose_response',
+            item,
+            correctAnswer:
+              item.response.trim(),
+            textOptions:
+              options,
+            sentencePrompt:
+              item.prompt.trim(),
+          }
+        }
+      }
+
+      /*
+       * 2. Fill in the blank
+       */
+      if (
+        preferredType ===
         'fill_blank'
       ) {
         const blank =
@@ -727,8 +773,7 @@ function buildSentenceQuestions(
 
         if (
           blank &&
-          blank.options.length >=
-            2
+          blank.options.length >= 2
         ) {
           return {
             id: `${item.item_id}-sentence-blank`,
@@ -745,6 +790,67 @@ function buildSentenceQuestions(
         }
       }
 
+      /*
+       * 如果原本指定的題型做不了，
+       * 優先嘗試 choose_response。
+       */
+      if (
+        item.prompt.trim() &&
+        item.response.trim()
+      ) {
+        const options =
+          createResponseOptions(
+            item,
+            sentences,
+          )
+
+        if (options.length >= 2) {
+          return {
+            id: `${item.item_id}-sentence-response-fallback`,
+            type:
+              'sentence_choose_response',
+            item,
+            correctAnswer:
+              item.response.trim(),
+            textOptions:
+              options,
+            sentencePrompt:
+              item.prompt.trim(),
+          }
+        }
+      }
+
+      /*
+       * 再嘗試 fill_blank。
+       */
+      const fallbackBlank =
+        createSentenceBlank(
+          item,
+          sentences,
+        )
+
+      if (
+        fallbackBlank &&
+        fallbackBlank.options.length >= 2
+      ) {
+        return {
+          id: `${item.item_id}-sentence-blank-fallback`,
+          type:
+            'sentence_fill_blank',
+          item,
+          correctAnswer:
+            fallbackBlank.answer,
+          textOptions:
+            fallbackBlank.options,
+          sentencePrompt:
+            fallbackBlank.prompt,
+        }
+      }
+
+      /*
+       * 最後 fallback：
+       * listen and choose
+       */
       return {
         id: `${item.item_id}-sentence-listen`,
         type:
@@ -957,7 +1063,7 @@ export default function Practice() {
 
         /*
          * Daily 暫時仍使用 Vocabulary。
-         * 等 Phonics 完成後再改成 4+3+3。
+         * 等 Phonics 完成後再改成 4 + 3 + 3。
          */
         const vocab =
           getVocabulary(
@@ -1101,8 +1207,7 @@ export default function Practice() {
       <main className="mx-auto max-w-3xl p-6">
         <div className="rounded-2xl bg-white p-6 shadow-sm">
           <h1 className="text-xl font-bold text-red-600">
-            Practice
-            unavailable
+            Practice unavailable
           </h1>
 
           <p className="mt-2 text-slate-600">
@@ -1138,15 +1243,12 @@ export default function Practice() {
           </div>
 
           <h1 className="mt-4 text-3xl font-bold">
-            Practice
-            complete!
+            Practice complete!
           </h1>
 
           <p className="mt-3 text-lg text-slate-600">
             You got {score} /{' '}
-            {
-              questions.length
-            }{' '}
+            {questions.length}{' '}
             correct.
           </p>
 
@@ -1157,18 +1259,14 @@ export default function Practice() {
               </div>
 
               <p className="mt-2 font-semibold text-emerald-600">
-                You earned
-                water for your
-                tree!
+                You earned water for your tree!
               </p>
             </>
           )}
 
           {!isDaily && (
             <p className="mt-5 text-sm text-slate-400">
-              Free practice
-              does not earn
-              water.
+              Free practice does not earn water.
             </p>
           )}
 
@@ -1206,12 +1304,9 @@ export default function Practice() {
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
             Question{' '}
-            {currentIndex +
-              1}{' '}
+            {currentIndex + 1}{' '}
             /{' '}
-            {
-              questions.length
-            }
+            {questions.length}
           </span>
 
           <span>
@@ -1236,8 +1331,7 @@ export default function Practice() {
           'image_to_word' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the
-              word.
+              Choose the word.
             </p>
 
             <div className="mt-6 flex justify-center">
@@ -1271,8 +1365,7 @@ export default function Practice() {
           'audio_to_word' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and
-              choose.
+              Listen and choose.
             </p>
 
             <div className="my-8 text-center">
@@ -1302,8 +1395,7 @@ export default function Practice() {
           'word_to_image' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the
-              picture.
+              Choose the picture.
             </p>
 
             <h1 className="mt-4 text-center text-5xl font-bold text-slate-800">
@@ -1337,9 +1429,7 @@ export default function Practice() {
           'audio_to_image' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and
-              choose the
-              picture.
+              Listen and choose the picture.
             </p>
 
             <div className="my-8 text-center">
@@ -1369,9 +1459,7 @@ export default function Practice() {
           'missing_letter' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the
-              missing
-              letter.
+              Choose the missing letter.
             </p>
 
             <div className="mt-5 text-center">
@@ -1399,14 +1487,48 @@ export default function Practice() {
           </>
         )}
 
+        {/* Sentence: choose response */}
+        {currentQuestion.type ===
+          'sentence_choose_response' && (
+          <>
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the best response.
+            </p>
+
+            <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
+              {
+                currentQuestion
+                  .sentencePrompt
+              }
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                speakEnglish(
+                  currentQuestion
+                    .sentencePrompt ??
+                    '',
+                )
+              }
+              className="mx-auto mt-5 block rounded-full bg-violet-50 px-5 py-4 text-3xl transition hover:bg-violet-100"
+              aria-label="Play question"
+            >
+              🔊
+            </button>
+
+            <p className="mt-2 text-center text-sm text-slate-400">
+              Tap to hear the question
+            </p>
+          </>
+        )}
+
         {/* Sentence: listen and choose */}
         {currentQuestion.type ===
           'sentence_listen_choose' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and
-              choose the
-              sentence.
+              Listen and choose the sentence.
             </p>
 
             <div className="my-8 text-center">
@@ -1436,8 +1558,7 @@ export default function Practice() {
           'sentence_fill_blank' && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the
-              missing word.
+              Choose the missing word.
             </p>
 
             <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
