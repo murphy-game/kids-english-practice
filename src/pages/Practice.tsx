@@ -793,7 +793,7 @@ export default function Practice() {
               What is this?
             </p>
 
-            <div className="my-6 flex justify-center">
+            <div className="mt-6 flex justify-center">
               {currentQuestion.asset && (
                 <Visual
                   asset={
@@ -801,6 +801,23 @@ export default function Practice() {
                   }
                 />
               )}
+            </div>
+
+            <div className="mt-3 text-center">
+              <button
+                type="button"
+                onClick={() =>
+                  speakEnglish(
+                    currentQuestion
+                      .item
+                      .english,
+                  )
+                }
+                className="rounded-full bg-sky-50 px-4 py-3 text-2xl transition hover:bg-sky-100"
+                aria-label="Play pronunciation"
+              >
+                🔊
+              </button>
             </div>
           </>
         )}
@@ -1015,10 +1032,7 @@ export default function Practice() {
                       className
                     }
                   >
-                    {currentQuestion.type ===
-                    'missing_letter'
-                      ? option.toUpperCase()
-                      : option}
+                    {option}
                   </button>
                 )
               },
@@ -1041,7 +1055,7 @@ export default function Practice() {
                 ? 'Correct! 🎉'
                 : currentQuestion.type ===
                     'missing_letter'
-                  ? `Answer: ${currentQuestion.correctAnswer.toUpperCase()}`
+                  ? `Answer: ${currentQuestion.correctAnswer}`
                   : `Answer: ${currentQuestion.correctAnswer}`}
             </p>
 
