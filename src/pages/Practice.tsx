@@ -102,8 +102,7 @@ function createEnglishOptions(
 function createMissingLetterQuestion(
   item: ContentItem,
 ) {
-  const word =
-    item.english.toLowerCase()
+  const word = item.english.toLowerCase()
 
   const validIndexes = word
     .split('')
@@ -127,8 +126,7 @@ function createMissingLetterQuestion(
       )
     ]
 
-  const missingLetter =
-    picked.char
+  const missingLetter = picked.char
 
   const maskedWord = word
     .split('')
@@ -139,14 +137,12 @@ function createMissingLetterQuestion(
     )
     .join('')
 
-  const wrongLetters =
-    shuffle(
-      LETTER_POOL.filter(
-        (letter) =>
-          letter !==
-          missingLetter,
-      ),
-    ).slice(0, 3)
+  const wrongLetters = shuffle(
+    LETTER_POOL.filter(
+      (letter) =>
+        letter !== missingLetter,
+    ),
+  ).slice(0, 3)
 
   return {
     maskedWord,
@@ -167,9 +163,7 @@ function getUsableAsset(
   }
 
   const asset =
-    assetMap.get(
-      item.image_key,
-    )
+    assetMap.get(item.image_key)
 
   if (!asset) {
     return undefined
@@ -185,7 +179,8 @@ function getUsableAsset(
 
   if (
     asset.display_type === 'image' &&
-    asset.status === 'approved'
+    asset.status === 'approved' &&
+    asset.image_file
   ) {
     return asset
   }
@@ -268,6 +263,7 @@ function buildQuestions(
     ...supportedRecommended,
   ]
 
+  // 保留「看到英文單字 → 選圖片」
   if (
     !availableTypes.includes(
       'word_to_image',
@@ -281,6 +277,17 @@ function buildQuestions(
   const uniqueTypes = [
     ...new Set(availableTypes),
   ]
+
+  // 如果 Sheet 沒有設定題型，提供基本題型
+  if (uniqueTypes.length === 0) {
+    uniqueTypes.push(
+      'image_to_word',
+      'audio_to_word',
+      'word_to_image',
+      'audio_to_image',
+      'missing_letter',
+    )
+  }
 
   const selectedItems =
     shuffle(vocab).slice(
@@ -302,6 +309,7 @@ function buildQuestions(
           assetMap,
         )
 
+      // 沒有圖片就不能做圖片→單字
       if (
         type === 'image_to_word' &&
         !asset
@@ -309,6 +317,7 @@ function buildQuestions(
         type = 'audio_to_word'
       }
 
+      // 單字→圖片 / 聽音→圖片
       if (
         type === 'word_to_image' ||
         type === 'audio_to_image'
@@ -321,11 +330,9 @@ function buildQuestions(
           )
 
         if (
-          visualOptions.length <
-          2
+          visualOptions.length < 2
         ) {
-          type =
-            'audio_to_word'
+          type = 'audio_to_word'
         } else {
           return {
             id:
@@ -341,9 +348,9 @@ function buildQuestions(
         }
       }
 
+      // 圖片→單字
       if (
-        type ===
-        'image_to_word'
+        type === 'image_to_word'
       ) {
         return {
           id: `${item.item_id}-image-word`,
@@ -360,9 +367,9 @@ function buildQuestions(
         }
       }
 
+      // 聽音→單字
       if (
-        type ===
-        'audio_to_word'
+        type === 'audio_to_word'
       ) {
         return {
           id: `${item.item_id}-audio-word`,
@@ -378,9 +385,9 @@ function buildQuestions(
         }
       }
 
+      // 缺字母
       if (
-        type ===
-        'missing_letter'
+        type === 'missing_letter'
       ) {
         const missing =
           createMissingLetterQuestion(
@@ -402,6 +409,7 @@ function buildQuestions(
         }
       }
 
+      // fallback
       return {
         id: `${item.item_id}-fallback`,
         type: 'audio_to_word',
@@ -776,8 +784,7 @@ export default function Practice() {
           <div
             className="h-full bg-emerald-500 transition-all"
             style={{
-              width:
-                `${progress}%`,
+              width: `${progress}%`,
             }}
           />
         </div>
@@ -785,11 +792,12 @@ export default function Practice() {
 
       <section className="rounded-3xl bg-white p-8 shadow-sm">
 
+        {/* 圖片 → 單字 */}
         {currentQuestion.type ===
           'image_to_word' && (
           <>
-            <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-              What is this?
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the word.
             </p>
 
             <div className="mt-6 flex justify-center">
@@ -807,13 +815,11 @@ export default function Practice() {
                 type="button"
                 onClick={() =>
                   speakEnglish(
-                    currentQuestion
-                      .item
-                      .english,
+                    'Choose the word.',
                   )
                 }
                 className="rounded-full bg-sky-50 px-4 py-3 text-2xl transition hover:bg-sky-100"
-                aria-label="Play pronunciation"
+                aria-label="Play instruction"
               >
                 🔊
               </button>
@@ -821,11 +827,12 @@ export default function Practice() {
           </>
         )}
 
+        {/* 聽音 → 單字 */}
         {currentQuestion.type ===
           'audio_to_word' && (
           <>
-            <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Listen and choose
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Listen and choose.
             </p>
 
             <div className="my-8 text-center">
@@ -839,7 +846,7 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
-                aria-label="Play pronunciation"
+                aria-label="Play word"
               >
                 🔊
               </button>
@@ -851,11 +858,12 @@ export default function Practice() {
           </>
         )}
 
+        {/* 單字 → 圖片 */}
         {currentQuestion.type ===
           'word_to_image' && (
           <>
-            <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Choose the picture
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the picture.
             </p>
 
             <h1 className="mt-4 text-center text-5xl font-bold text-slate-800">
@@ -877,7 +885,7 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full px-4 py-2 text-2xl hover:bg-slate-100"
-                aria-label="Play pronunciation"
+                aria-label="Play word"
               >
                 🔊
               </button>
@@ -885,11 +893,12 @@ export default function Practice() {
           </>
         )}
 
+        {/* 聽音 → 圖片 */}
         {currentQuestion.type ===
           'audio_to_image' && (
           <>
-            <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Listen and choose the picture
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Listen and choose the picture.
             </p>
 
             <div className="my-8 text-center">
@@ -903,7 +912,7 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
-                aria-label="Play pronunciation"
+                aria-label="Play word"
               >
                 🔊
               </button>
@@ -915,11 +924,12 @@ export default function Practice() {
           </>
         )}
 
+        {/* 缺字母 */}
         {currentQuestion.type ===
           'missing_letter' && (
           <>
-            <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Choose the missing letter
+            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
+              Choose the missing letter.
             </p>
 
             <div className="mt-5 text-center">
@@ -940,7 +950,7 @@ export default function Practice() {
                   )
                 }
                 className="mt-4 rounded-full bg-sky-50 px-4 py-3 text-3xl hover:bg-sky-100"
-                aria-label="Play pronunciation"
+                aria-label="Play word"
               >
                 🔊
               </button>
@@ -948,6 +958,7 @@ export default function Practice() {
           </>
         )}
 
+        {/* 圖片選項 */}
         {usesVisualOptions ? (
           <div className="mt-8 grid grid-cols-2 gap-4">
             {currentQuestion.visualOptions?.map(
@@ -1012,6 +1023,7 @@ export default function Practice() {
             )}
           </div>
         ) : (
+          /* 文字選項 */
           <div className="mt-8 grid gap-3 sm:grid-cols-2">
             {currentQuestion.textOptions?.map(
               (option) => {
@@ -1046,9 +1058,7 @@ export default function Practice() {
 
                 return (
                   <button
-                    key={
-                      option
-                    }
+                    key={option}
                     type="button"
                     onClick={() =>
                       chooseAnswer(
@@ -1071,6 +1081,7 @@ export default function Practice() {
           </div>
         )}
 
+        {/* 作答結果 */}
         {selected && (
           <div className="mt-6 text-center">
             <p
@@ -1084,10 +1095,7 @@ export default function Practice() {
               {selected ===
               currentQuestion.correctAnswer
                 ? 'Correct! 🎉'
-                : currentQuestion.type ===
-                    'missing_letter'
-                  ? `Answer: ${currentQuestion.correctAnswer}`
-                  : `Answer: ${currentQuestion.correctAnswer}`}
+                : `Answer: ${currentQuestion.correctAnswer}`}
             </p>
 
             <button
