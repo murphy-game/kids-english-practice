@@ -222,8 +222,12 @@ export default function Home() {
           {/* Sentence */}
           <button
             type="button"
-            disabled
-            className="cursor-not-allowed rounded-3xl bg-white p-6 text-left opacity-60 shadow-sm"
+            onClick={() =>
+              openPractice(
+                'sentence',
+              )
+            }
+            className="rounded-3xl bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
           >
             <div className="text-4xl">
               💬
@@ -234,12 +238,13 @@ export default function Home() {
             </h2>
 
             <p className="mt-2 text-sm text-slate-500">
-              Questions, answers
-              and sentence patterns
+              Listening,
+              sentence patterns
+              and fill-in-the-blank
             </p>
 
-            <div className="mt-5 text-sm font-semibold text-slate-400">
-              Coming next
+            <div className="mt-5 font-semibold text-violet-600">
+              Practice →
             </div>
           </button>
 
