@@ -11,14 +11,21 @@ import type {
 type QuestionType =
   | 'image_to_word'
   | 'audio_to_word'
-  | 'word_to_meaning'
+  | 'word_to_image'
   | 'missing_letter'
+
+type VisualOption = {
+  key: string
+  english: string
+  asset: Asset
+}
 
 type Question = {
   id: string
   type: QuestionType
   item: ContentItem
-  options: string[]
+  textOptions?: string[]
+  visualOptions?: VisualOption[]
   correctAnswer: string
   asset?: Asset
   maskedWord?: string
@@ -47,7 +54,6 @@ function getVocabulary(
       item.lesson_id === lessonId &&
       item.type === 'vocab' &&
       item.english.trim() !== '' &&
-      item.chinese.trim() !== '' &&
       !isPersonName(item),
   )
 }
@@ -92,30 +98,11 @@ function createEnglishOptions(
   ])
 }
 
-function createChineseOptions(
-  item: ContentItem,
-  vocab: ContentItem[],
-) {
-  const distractors = shuffle(
-    vocab
-      .filter(
-        (other) =>
-          other.item_id !== item.item_id &&
-          other.chinese !== item.chinese,
-      )
-      .map((other) => other.chinese),
-  ).slice(0, 3)
-
-  return shuffle([
-    item.chinese,
-    ...distractors,
-  ])
-}
-
 function createMissingLetterQuestion(
   item: ContentItem,
 ) {
-  const word = item.english.toLowerCase()
+  const word =
+    item.english.toLowerCase()
 
   const validIndexes = word
     .split('')
@@ -139,7 +126,8 @@ function createMissingLetterQuestion(
       )
     ]
 
-  const missingLetter = picked.char
+  const missingLetter =
+    picked.char
 
   const maskedWord = word
     .split('')
@@ -150,12 +138,14 @@ function createMissingLetterQuestion(
     )
     .join('')
 
-  const wrongLetters = shuffle(
-    LETTER_POOL.filter(
-      (letter) =>
-        letter !== missingLetter,
-    ),
-  ).slice(0, 3)
+  const wrongLetters =
+    shuffle(
+      LETTER_POOL.filter(
+        (letter) =>
+          letter !==
+          missingLetter,
+      ),
+    ).slice(0, 3)
 
   return {
     maskedWord,
@@ -167,19 +157,21 @@ function createMissingLetterQuestion(
   }
 }
 
-function hasUsableVisual(
+function getUsableAsset(
   item: ContentItem,
   assetMap: Map<string, Asset>,
 ) {
   if (!item.image_key) {
-    return false
+    return undefined
   }
 
   const asset =
-    assetMap.get(item.image_key)
+    assetMap.get(
+      item.image_key,
+    )
 
   if (!asset) {
-    return false
+    return undefined
   }
 
   if (
@@ -187,17 +179,67 @@ function hasUsableVisual(
     asset.status === 'approved' &&
     asset.emoji
   ) {
-    return true
+    return asset
   }
 
   if (
     asset.display_type === 'image' &&
     asset.status === 'approved'
   ) {
-    return true
+    return asset
   }
 
-  return false
+  return undefined
+}
+
+function createVisualOptions(
+  item: ContentItem,
+  vocab: ContentItem[],
+  assetMap: Map<string, Asset>,
+): VisualOption[] {
+  const correctAsset =
+    getUsableAsset(
+      item,
+      assetMap,
+    )
+
+  if (!correctAsset) {
+    return []
+  }
+
+  const distractorItems =
+    shuffle(
+      vocab.filter(
+        (other) =>
+          other.item_id !==
+            item.item_id &&
+          getUsableAsset(
+            other,
+            assetMap,
+          ),
+      ),
+    ).slice(0, 3)
+
+  const options: VisualOption[] = [
+    {
+      key: item.image_key,
+      english: item.english,
+      asset: correctAsset,
+    },
+    ...distractorItems.map(
+      (other) => ({
+        key: other.image_key,
+        english: other.english,
+        asset:
+          getUsableAsset(
+            other,
+            assetMap,
+          ) as Asset,
+      }),
+    ),
+  ]
+
+  return shuffle(options)
 }
 
 function buildQuestions(
@@ -217,13 +259,33 @@ function buildQuestions(
       (type) =>
         type === 'image_to_word' ||
         type === 'audio_to_word' ||
+        type === 'audio_to_image' ||
         type === 'missing_letter',
-    ) as QuestionType[]
+    )
 
-  const availableTypes: QuestionType[] = [
-    ...supportedRecommended,
-    'word_to_meaning',
-  ]
+  const availableTypes: QuestionType[] = []
+
+  for (const type of supportedRecommended) {
+    if (type === 'audio_to_image') {
+      availableTypes.push(
+        'word_to_image',
+      )
+    } else {
+      availableTypes.push(
+        type as QuestionType,
+      )
+    }
+  }
+
+  if (
+    !availableTypes.includes(
+      'word_to_image',
+    )
+  ) {
+    availableTypes.push(
+      'word_to_image',
+    )
+  }
 
   const uniqueTypes = [
     ...new Set(availableTypes),
@@ -239,31 +301,66 @@ function buildQuestions(
     (item, index) => {
       let type =
         uniqueTypes[
-          index % uniqueTypes.length
+          index %
+            uniqueTypes.length
         ]
 
-      if (
-        type === 'image_to_word' &&
-        !hasUsableVisual(
+      const asset =
+        getUsableAsset(
           item,
           assetMap,
         )
+
+      if (
+        type ===
+          'image_to_word' &&
+        !asset
       ) {
-        type = 'audio_to_word'
+        type =
+          'audio_to_word'
       }
 
-      if (type === 'image_to_word') {
+      if (
+        type ===
+        'word_to_image'
+      ) {
+        const visualOptions =
+          createVisualOptions(
+            item,
+            vocab,
+            assetMap,
+          )
+
+        if (
+          visualOptions.length <
+          2
+        ) {
+          type =
+            'audio_to_word'
+        } else {
+          return {
+            id: `${item.item_id}-word-image`,
+            type,
+            item,
+            correctAnswer:
+              item.english,
+            visualOptions,
+          }
+        }
+      }
+
+      if (
+        type ===
+        'image_to_word'
+      ) {
         return {
-          id: `${item.item_id}-image`,
+          id: `${item.item_id}-image-word`,
           type,
           item,
-          asset:
-            assetMap.get(
-              item.image_key,
-            ),
+          asset,
           correctAnswer:
             item.english,
-          options:
+          textOptions:
             createEnglishOptions(
               item,
               vocab,
@@ -271,14 +368,17 @@ function buildQuestions(
         }
       }
 
-      if (type === 'audio_to_word') {
+      if (
+        type ===
+        'audio_to_word'
+      ) {
         return {
-          id: `${item.item_id}-audio`,
+          id: `${item.item_id}-audio-word`,
           type,
           item,
           correctAnswer:
             item.english,
-          options:
+          textOptions:
             createEnglishOptions(
               item,
               vocab,
@@ -286,7 +386,10 @@ function buildQuestions(
         }
       }
 
-      if (type === 'missing_letter') {
+      if (
+        type ===
+        'missing_letter'
+      ) {
         const missing =
           createMissingLetterQuestion(
             item,
@@ -299,7 +402,7 @@ function buildQuestions(
             item,
             correctAnswer:
               missing.missingLetter,
-            options:
+            textOptions:
               missing.options,
             maskedWord:
               missing.maskedWord,
@@ -308,13 +411,13 @@ function buildQuestions(
       }
 
       return {
-        id: `${item.item_id}-meaning`,
-        type: 'word_to_meaning',
+        id: `${item.item_id}-fallback`,
+        type: 'audio_to_word',
         item,
         correctAnswer:
-          item.chinese,
-        options:
-          createChineseOptions(
+          item.english,
+        textOptions:
+          createEnglishOptions(
             item,
             vocab,
           ),
@@ -323,10 +426,16 @@ function buildQuestions(
   )
 }
 
-function speakEnglish(text: string) {
+function speakEnglish(
+  text: string,
+) {
   if (
-    typeof window === 'undefined' ||
-    !('speechSynthesis' in window)
+    typeof window ===
+      'undefined' ||
+    !(
+      'speechSynthesis' in
+      window
+    )
   ) {
     return
   }
@@ -345,6 +454,64 @@ function speakEnglish(text: string) {
   window.speechSynthesis.speak(
     utterance,
   )
+}
+
+function getImageUrl(
+  asset: Asset,
+) {
+  const file =
+    asset.image_file.trim()
+
+  return `${IMAGE_BASE_PATH}${encodeURIComponent(
+    file,
+  )}`
+}
+
+function Visual({
+  asset,
+  size = 'large',
+}: {
+  asset: Asset
+  size?: 'large' | 'small'
+}) {
+  if (
+    asset.display_type ===
+      'emoji' &&
+    asset.emoji
+  ) {
+    return (
+      <div
+        className={
+          size === 'large'
+            ? 'text-8xl'
+            : 'text-6xl'
+        }
+      >
+        {asset.emoji}
+      </div>
+    )
+  }
+
+  if (
+    asset.display_type ===
+    'image'
+  ) {
+    return (
+      <img
+        src={getImageUrl(
+          asset,
+        )}
+        alt=""
+        className={
+          size === 'large'
+            ? 'h-52 w-52 object-contain'
+            : 'h-28 w-28 object-contain'
+        }
+      />
+    )
+  }
+
+  return null
 }
 
 export default function Practice() {
@@ -398,7 +565,9 @@ export default function Practice() {
             lessonId,
           )
 
-        if (vocab.length === 0) {
+        if (
+          vocab.length === 0
+        ) {
           throw new Error(
             'No vocabulary found for this lesson.',
           )
@@ -440,7 +609,8 @@ export default function Practice() {
       if (
         typeof window !==
           'undefined' &&
-        'speechSynthesis' in window
+        'speechSynthesis' in
+          window
       ) {
         window.speechSynthesis.cancel()
       }
@@ -491,66 +661,17 @@ export default function Practice() {
     if (
       typeof window !==
         'undefined' &&
-      'speechSynthesis' in window
+      'speechSynthesis' in
+        window
     ) {
       window.speechSynthesis.cancel()
     }
 
     setSelected(null)
-
     setCurrentIndex(
       (value) =>
         value + 1,
     )
-  }
-
-  function renderVisual(
-    question: Question,
-  ) {
-    const asset =
-      question.asset
-
-    if (!asset) {
-      return null
-    }
-
-    if (
-      asset.display_type ===
-        'emoji' &&
-      asset.emoji
-    ) {
-      return (
-        <div className="my-6 text-center text-8xl">
-          {asset.emoji}
-        </div>
-      )
-    }
-
-    if (
-      asset.display_type ===
-      'image'
-    ) {
-      const imageFile =
-        asset.image_file.trim() ||
-        `${question.item.image_key}.png`
-
-      const imageUrl =
-        `${IMAGE_BASE_PATH}${encodeURIComponent(
-          imageFile,
-        )}`
-
-      return (
-        <div className="my-6 flex justify-center">
-          <img
-            src={imageUrl}
-            alt=""
-            className="h-52 w-52 rounded-2xl object-contain"
-          />
-        </div>
-      )
-    }
-
-    return null
   }
 
   if (loading) {
@@ -664,6 +785,7 @@ export default function Practice() {
       </section>
 
       <section className="rounded-3xl bg-white p-8 shadow-sm">
+
         {currentQuestion.type ===
           'image_to_word' && (
           <>
@@ -671,9 +793,15 @@ export default function Practice() {
               What is this?
             </p>
 
-            {renderVisual(
-              currentQuestion,
-            )}
+            <div className="my-6 flex justify-center">
+              {currentQuestion.asset && (
+                <Visual
+                  asset={
+                    currentQuestion.asset
+                  }
+                />
+              )}
+            </div>
           </>
         )}
 
@@ -695,7 +823,6 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
-                aria-label="Play pronunciation"
               >
                 🔊
               </button>
@@ -708,10 +835,10 @@ export default function Practice() {
         )}
 
         {currentQuestion.type ===
-          'word_to_meaning' && (
+          'word_to_image' && (
           <>
             <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-              What does this word mean?
+              Choose the picture
             </p>
 
             <h1 className="mt-4 text-center text-5xl font-bold text-slate-800">
@@ -733,7 +860,6 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full px-4 py-2 text-2xl hover:bg-slate-100"
-                aria-label="Play pronunciation"
               >
                 🔊
               </button>
@@ -766,75 +892,139 @@ export default function Practice() {
                   )
                 }
                 className="mt-4 rounded-full bg-sky-50 px-4 py-3 text-3xl hover:bg-sky-100"
-                aria-label="Play pronunciation"
               >
                 🔊
               </button>
-
-              <p className="mt-2 text-sm text-slate-400">
-                Listen if you need help
-              </p>
             </div>
           </>
         )}
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-2">
-          {currentQuestion.options.map(
-            (option) => {
-              const isCorrect =
-                option ===
-                currentQuestion.correctAnswer
+        {currentQuestion.type ===
+          'word_to_image' ? (
+          <div className="mt-8 grid grid-cols-2 gap-4">
+            {currentQuestion.visualOptions?.map(
+              (option) => {
+                const isCorrect =
+                  option.english ===
+                    currentQuestion.correctAnswer
 
-              const isSelected =
-                option === selected
+                const isSelected =
+                  option.english ===
+                    selected
 
-              let className =
-                'rounded-2xl border-2 p-4 text-lg font-semibold transition '
+                let className =
+                  'flex min-h-40 items-center justify-center rounded-2xl border-2 p-4 transition '
 
-              if (!selected) {
-                className +=
-                  'border-slate-200 bg-white hover:border-emerald-400'
-              } else if (
-                isCorrect
-              ) {
-                className +=
-                  'border-emerald-500 bg-emerald-50 text-emerald-700'
-              } else if (
-                isSelected
-              ) {
-                className +=
-                  'border-red-400 bg-red-50 text-red-600'
-              } else {
-                className +=
-                  'border-slate-200 bg-slate-50 text-slate-400'
-              }
+                if (!selected) {
+                  className +=
+                    'border-slate-200 bg-white hover:border-emerald-400'
+                } else if (
+                  isCorrect
+                ) {
+                  className +=
+                    'border-emerald-500 bg-emerald-50'
+                } else if (
+                  isSelected
+                ) {
+                  className +=
+                    'border-red-400 bg-red-50'
+                } else {
+                  className +=
+                    'border-slate-200 bg-slate-50 opacity-50'
+                }
 
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() =>
-                    chooseAnswer(
-                      option,
-                    )
-                  }
-                  disabled={
-                    selected !==
-                    null
-                  }
-                  className={
-                    className
-                  }
-                >
-                  {currentQuestion.type ===
-                  'missing_letter'
-                    ? option.toUpperCase()
-                    : option}
-                </button>
-              )
-            },
-          )}
-        </div>
+                return (
+                  <button
+                    key={
+                      option.key
+                    }
+                    type="button"
+                    onClick={() =>
+                      chooseAnswer(
+                        option.english,
+                      )
+                    }
+                    disabled={
+                      selected !==
+                      null
+                    }
+                    className={
+                      className
+                    }
+                  >
+                    <Visual
+                      asset={
+                        option.asset
+                      }
+                      size="small"
+                    />
+                  </button>
+                )
+              },
+            )}
+          </div>
+        ) : (
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            {currentQuestion.textOptions?.map(
+              (option) => {
+                const isCorrect =
+                  option ===
+                    currentQuestion.correctAnswer
+
+                const isSelected =
+                  option ===
+                    selected
+
+                let className =
+                  'rounded-2xl border-2 p-4 text-lg font-semibold transition '
+
+                if (!selected) {
+                  className +=
+                    'border-slate-200 bg-white hover:border-emerald-400'
+                } else if (
+                  isCorrect
+                ) {
+                  className +=
+                    'border-emerald-500 bg-emerald-50 text-emerald-700'
+                } else if (
+                  isSelected
+                ) {
+                  className +=
+                    'border-red-400 bg-red-50 text-red-600'
+                } else {
+                  className +=
+                    'border-slate-200 bg-slate-50 text-slate-400'
+                }
+
+                return (
+                  <button
+                    key={
+                      option
+                    }
+                    type="button"
+                    onClick={() =>
+                      chooseAnswer(
+                        option,
+                      )
+                    }
+                    disabled={
+                      selected !==
+                      null
+                    }
+                    className={
+                      className
+                    }
+                  >
+                    {currentQuestion.type ===
+                    'missing_letter'
+                      ? option.toUpperCase()
+                      : option}
+                  </button>
+                )
+              },
+            )}
+          </div>
+        )}
 
         {selected && (
           <div className="mt-6 text-center">
@@ -854,19 +1044,6 @@ export default function Practice() {
                   ? `Answer: ${currentQuestion.correctAnswer.toUpperCase()}`
                   : `Answer: ${currentQuestion.correctAnswer}`}
             </p>
-
-            {currentQuestion.type ===
-              'missing_letter' &&
-              selected !==
-                currentQuestion.correctAnswer && (
-                <p className="mt-2 text-lg font-semibold text-slate-600">
-                  {
-                    currentQuestion
-                      .item
-                      .english
-                  }
-                </p>
-              )}
 
             <button
               type="button"
