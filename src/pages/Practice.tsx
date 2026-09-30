@@ -12,6 +12,7 @@ type QuestionType =
   | 'image_to_word'
   | 'audio_to_word'
   | 'word_to_image'
+  | 'audio_to_image'
   | 'missing_letter'
 
 type VisualOption = {
@@ -261,21 +262,11 @@ function buildQuestions(
         type === 'audio_to_word' ||
         type === 'audio_to_image' ||
         type === 'missing_letter',
-    )
+    ) as QuestionType[]
 
-  const availableTypes: QuestionType[] = []
-
-  for (const type of supportedRecommended) {
-    if (type === 'audio_to_image') {
-      availableTypes.push(
-        'word_to_image',
-      )
-    } else {
-      availableTypes.push(
-        type as QuestionType,
-      )
-    }
-  }
+  const availableTypes: QuestionType[] = [
+    ...supportedRecommended,
+  ]
 
   if (
     !availableTypes.includes(
@@ -312,17 +303,15 @@ function buildQuestions(
         )
 
       if (
-        type ===
-          'image_to_word' &&
+        type === 'image_to_word' &&
         !asset
       ) {
-        type =
-          'audio_to_word'
+        type = 'audio_to_word'
       }
 
       if (
-        type ===
-        'word_to_image'
+        type === 'word_to_image' ||
+        type === 'audio_to_image'
       ) {
         const visualOptions =
           createVisualOptions(
@@ -339,7 +328,10 @@ function buildQuestions(
             'audio_to_word'
         } else {
           return {
-            id: `${item.item_id}-word-image`,
+            id:
+              type === 'audio_to_image'
+                ? `${item.item_id}-audio-image`
+                : `${item.item_id}-word-image`,
             type,
             item,
             correctAnswer:
@@ -668,6 +660,7 @@ export default function Practice() {
     }
 
     setSelected(null)
+
     setCurrentIndex(
       (value) =>
         value + 1,
@@ -758,6 +751,12 @@ export default function Practice() {
       questions.length) *
     100
 
+  const usesVisualOptions =
+    currentQuestion.type ===
+      'word_to_image' ||
+    currentQuestion.type ===
+      'audio_to_image'
+
   return (
     <main className="mx-auto max-w-3xl p-6">
       <section className="mb-6">
@@ -840,6 +839,7 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
+                aria-label="Play pronunciation"
               >
                 🔊
               </button>
@@ -877,9 +877,40 @@ export default function Practice() {
                   )
                 }
                 className="rounded-full px-4 py-2 text-2xl hover:bg-slate-100"
+                aria-label="Play pronunciation"
               >
                 🔊
               </button>
+            </div>
+          </>
+        )}
+
+        {currentQuestion.type ===
+          'audio_to_image' && (
+          <>
+            <p className="text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
+              Listen and choose the picture
+            </p>
+
+            <div className="my-8 text-center">
+              <button
+                type="button"
+                onClick={() =>
+                  speakEnglish(
+                    currentQuestion
+                      .item
+                      .english,
+                  )
+                }
+                className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
+                aria-label="Play pronunciation"
+              >
+                🔊
+              </button>
+
+              <p className="mt-3 text-sm text-slate-400">
+                Tap to listen
+              </p>
             </div>
           </>
         )}
@@ -909,6 +940,7 @@ export default function Practice() {
                   )
                 }
                 className="mt-4 rounded-full bg-sky-50 px-4 py-3 text-3xl hover:bg-sky-100"
+                aria-label="Play pronunciation"
               >
                 🔊
               </button>
@@ -916,8 +948,7 @@ export default function Practice() {
           </>
         )}
 
-        {currentQuestion.type ===
-          'word_to_image' ? (
+        {usesVisualOptions ? (
           <div className="mt-8 grid grid-cols-2 gap-4">
             {currentQuestion.visualOptions?.map(
               (option) => {
