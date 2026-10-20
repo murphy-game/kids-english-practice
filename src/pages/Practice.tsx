@@ -1,3 +1,4 @@
+import { getSpeechRate, setSpeechRate, speakEnglish } from '../utils/speech'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { loadAppData } from '../services/dataLoader'
@@ -1225,27 +1226,6 @@ function mixQuestionGroups(
   return result
 }
 
-function speakEnglish(text: string) {
-  if (
-    typeof window === 'undefined' ||
-    !('speechSynthesis' in window)
-  ) {
-    return
-  }
-
-  window.speechSynthesis.cancel()
-
-  const utterance =
-    new SpeechSynthesisUtterance(
-      text.replace(/\s*\/\s*/g, ' . ' ).replace(/\s+/g, ' ').trim(),
-    )
-
-  utterance.lang = 'en-US'
-  utterance.rate = 0.85
-  utterance.pitch = 1
-
-  window.speechSynthesis.speak(utterance)
-}
 
 function getImageUrl(asset: Asset) {
   const file = asset.image_file.trim()
@@ -1328,6 +1308,7 @@ export default function Practice() {
   const [hasAttempted, setHasAttempted] =
     useState(false)
   const [score, setScore] = useState(0)
+  const [speechRate, updateSpeechRate] = useState(getSpeechRate)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -1600,6 +1581,13 @@ export default function Practice() {
       }
       setHasAttempted(true)
       setSelected(answer)
+      // Read the English answer only after the learner has answered.
+      const spokenAnswer = currentQuestion.type === 'comparison_ab'
+        ? currentQuestion.item.english
+        : currentQuestion.type.startsWith('phonics_')
+          ? (currentQuestion.phonicsWord || currentQuestion.item.english)
+          : currentQuestion.correctAnswer
+      speakEnglish(spokenAnswer)
       return
     }
 
@@ -1649,6 +1637,7 @@ export default function Practice() {
         }
         setHasAttempted(true)
         setSelected(attempt)
+        speakEnglish(currentQuestion.item.english)
       } else {
         setHasAttempted(true)
         setSpellError(true)
@@ -1792,6 +1781,13 @@ export default function Practice() {
 
   return (
     <main className="mx-auto max-w-3xl p-6">
+      <div className="sticky top-0 z-20 mb-4 rounded-xl border border-slate-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur">
+        <label className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">🔊 語速
+          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate) }}>
+            <option value={0.7}>🐢 慢速 0.7×</option><option value={0.8}>稍慢 0.8×</option><option value={1}>正常 1.0×</option>
+          </select>
+        </label>
+      </div>
       <section className="mb-6">
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
