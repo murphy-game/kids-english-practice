@@ -100,7 +100,7 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 function isPersonName(item: ContentItem) {
-  return item.chinese.includes('人名')
+  return String(item.chinese ?? '').includes('人名')
 }
 
 function getVocabulary(
