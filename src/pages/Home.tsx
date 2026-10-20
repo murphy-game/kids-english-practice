@@ -65,7 +65,7 @@ export default function Home() {
     : []
   const hasVocab = lessonContent.some(
     (item) => item.type === 'vocab' && item.english.trim() !== '' &&
-      !item.chinese.includes('人名') &&
+      !String(item.chinese ?? '').includes('人名') &&
       !(item.lesson_id === 'TU-L11' && item.english.trim().toLowerCase() === 'spell'),
   )
   const hasSentence = lessonContent.some(
