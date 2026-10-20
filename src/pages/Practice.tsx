@@ -1783,8 +1783,8 @@ export default function Practice() {
     <main className="mx-auto max-w-3xl p-6">
       <div className="sticky top-0 z-20 mb-4 rounded-xl border border-slate-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur">
         <label className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">🔊 語速
-          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate) }}>
-            <option value={0.7}>🐢 慢速 0.7×</option><option value={0.8}>稍慢 0.8×</option><option value={1}>正常 1.0×</option>
+          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate); speakEnglish(currentQuestion.phonicsWord ?? currentQuestion.item.english) }}>
+            <option value={0.5}>🐢 慢速 0.5×</option><option value={0.75}>學習 0.75×</option><option value={1}>正常 1.0×</option>
           </select>
         </label>
       </div>
