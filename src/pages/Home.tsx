@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadAppData } from '../services/dataLoader'
 import { getSpeechRate, setSpeechRate, speakEnglish } from '../utils/speech'
@@ -20,6 +20,14 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
   const [finished, setFinished] = useState(false)
   const [speechRate, updateSpeechRate] = useState(getSpeechRate)
   const target = ALPHABET[index]
+  const lastLearnLetter = useRef('A')
+  function playLearnLetter(letter: string) {
+    lastLearnLetter.current = letter
+    sayLetter(letter)
+  }
+  function replayCurrentLetter() {
+    sayLetter(mode === 'learn' ? lastLearnLetter.current : target)
+  }
   const options = [target, ALPHABET[(index + 7) % 26], ALPHABET[(index + 15) % 26], ALPHABET[(index + 21) % 26]]
     .sort((a, b) => ((a.charCodeAt(0) * 17 + index * 11) % 29) - ((b.charCodeAt(0) * 17 + index * 11) % 29))
   const showLower = mode === 'lowercase'
@@ -51,7 +59,7 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
       </div>
       <div className="sticky top-0 z-20 mb-4 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
         <label className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">🔊 語速
-          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate); sayLetter(target) }}>
+          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate); replayCurrentLetter() }}>
             <option value={0.5}>🐢 慢速 0.5×</option><option value={0.75}>學習 0.75×</option><option value={1}>正常 1.0×</option>
           </select>
         </label>
@@ -64,7 +72,7 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
       {mode === 'learn' ? (
         <section className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-7">
           {ALPHABET.map((letter) => (
-            <button key={letter} type="button" onClick={() => sayLetter(letter)} className="rounded-2xl bg-white p-3 text-center shadow-sm hover:bg-emerald-50" aria-label={`Listen to letter ${letter}`}>
+            <button key={letter} type="button" onClick={() => playLearnLetter(letter)} className="rounded-2xl bg-white p-3 text-center shadow-sm hover:bg-emerald-50" aria-label={`Listen to letter ${letter}`}>
               <span className="block text-3xl font-bold text-slate-800">{letter}</span>
               <span className="block text-2xl text-emerald-600">{letter.toLowerCase()}</span>
               <span className="mt-1 block text-xs text-slate-400">🔊</span>
