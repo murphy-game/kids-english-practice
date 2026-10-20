@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadAppData } from '../services/dataLoader'
 
-import type { Lesson } from '../types'
+import type { Lesson, ContentItem, LessonPractice } from '../types'
 
 export default function Home() {
   const navigate = useNavigate()
+
+  const [content, setContent] = useState<ContentItem[]>([])
+  const [lessonPractice, setLessonPractice] = useState<LessonPractice[]>([])
 
   const [lessons, setLessons] =
     useState<Lesson[]>([])
@@ -43,6 +46,8 @@ export default function Home() {
         setLessons(
           activeLessons,
         )
+        setContent(data.content)
+        setLessonPractice(data.lessonPractice)
       } catch (err) {
         setError(
           String(err),
@@ -55,6 +60,31 @@ export default function Home() {
     load()
   }, [])
 
+  const lessonContent = selectedLesson
+    ? content.filter((item) => item.lesson_id === selectedLesson.lesson_id)
+    : []
+  const hasVocab = lessonContent.some(
+    (item) => item.type === 'vocab' && item.english.trim() !== '' &&
+      !item.chinese.includes('人名') &&
+      !(item.lesson_id === 'TU-L11' && item.english.trim().toLowerCase() === 'spell'),
+  )
+  const hasSentence = lessonContent.some(
+    (item) => item.type === 'sentence' && item.english.trim() !== '',
+  )
+  const phonicsSetting = selectedLesson
+    ? lessonPractice.find(
+        (item) => item.lesson_id === selectedLesson.lesson_id && item.category === 'phonics',
+      )
+    : undefined
+  const hasPhonicsContent = lessonContent.some(
+    (item) => item.type === 'phonics' && item.english.trim() !== '',
+  )
+  // A configuration and phonics rows are necessary, but the practice generator
+  // may impose additional requirements for each question type.
+  const hasPhonics = hasPhonicsContent && hasVocab && Boolean(
+    phonicsSetting?.recommended_question_types.trim(),
+  )
+
   function openPractice(
     mode:
       | 'daily'
@@ -62,7 +92,11 @@ export default function Home() {
       | 'sentence'
       | 'phonics',
   ) {
-    if (!selectedLesson) {
+    if (!selectedLesson ||
+      (mode === 'daily' && !hasVocab) ||
+      (mode === 'vocab' && !hasVocab) ||
+      (mode === 'sentence' && !hasSentence) ||
+      (mode === 'phonics' && !hasPhonics)) {
       return
     }
 
@@ -147,12 +181,13 @@ export default function Home() {
           {/* Daily Practice */}
           <button
             type="button"
+            disabled={!hasVocab}
             onClick={() =>
               openPractice(
                 'daily',
               )
             }
-            className="rounded-3xl border-2 border-emerald-200 bg-emerald-50 p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md md:col-span-2"
+            className="disabled:cursor-not-allowed disabled:opacity-50 rounded-3xl border-2 border-emerald-200 bg-emerald-50 p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md md:col-span-2"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -165,7 +200,7 @@ export default function Home() {
                 </h2>
 
                 <p className="mt-2 text-slate-600">
-                  10 mixed questions
+                  Mixed practice questions
                 </p>
 
                 <p className="mt-1 text-sm text-slate-500">
@@ -194,12 +229,13 @@ export default function Home() {
           {/* Vocabulary */}
           <button
             type="button"
+            disabled={!hasVocab}
             onClick={() =>
               openPractice(
                 'vocab',
               )
             }
-            className="rounded-3xl bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+            className="disabled:cursor-not-allowed disabled:opacity-50 rounded-3xl bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
           >
             <div className="text-4xl">
               📚
@@ -222,12 +258,13 @@ export default function Home() {
           {/* Sentence */}
           <button
             type="button"
+            disabled={!hasSentence}
             onClick={() =>
               openPractice(
                 'sentence',
               )
             }
-            className="rounded-3xl bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+            className="disabled:cursor-not-allowed disabled:opacity-50 rounded-3xl bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
           >
             <div className="text-4xl">
               💬
@@ -251,8 +288,9 @@ export default function Home() {
           {/* Phonics */}
           <button
             type="button"
-            disabled
-            className="cursor-not-allowed rounded-3xl bg-white p-6 text-left opacity-60 shadow-sm"
+            disabled={!hasPhonics}
+            onClick={() => openPractice('phonics')}
+            className="disabled:cursor-not-allowed disabled:opacity-50 rounded-3xl bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
           >
             <div className="text-4xl">
               🔤
@@ -268,7 +306,7 @@ export default function Home() {
             </p>
 
             <div className="mt-5 text-sm font-semibold text-slate-400">
-              Coming next
+              {hasPhonics ? 'Practice →' : 'Coming next'}
             </div>
           </button>
         </section>
