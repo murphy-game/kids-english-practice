@@ -1563,6 +1563,46 @@ export default function Practice() {
     questions.length > 0 &&
     currentIndex >= questions.length
 
+  // Replay only what the current question is allowed to reveal.
+  // In response questions, item.english may contain the correct reply,
+  // so never use it as the speed-change playback source.
+  function replayCurrentQuestion() {
+    if (!currentQuestion) return
+
+    const type = currentQuestion.type
+    let spoken = ''
+
+    if (selected) {
+      spoken = type === 'comparison_ab'
+        ? currentQuestion.item.english
+        : type.startsWith('phonics_')
+          ? (currentQuestion.phonicsWord ?? currentQuestion.item.english)
+          : currentQuestion.correctAnswer
+    } else if (type === 'sentence_choose_response') {
+      spoken = currentQuestion.sentencePrompt ?? ''
+    } else if (type === 'sentence_fill_blank') {
+      spoken = 'Choose the missing word.'
+    } else if (type === 'sentence_listen_choose') {
+      spoken = currentQuestion.item.english
+    } else if (type === 'spell_word') {
+      spoken = `How do you spell ${currentQuestion.item.english}?`
+    } else if (type === 'image_to_word') {
+      spoken = 'Choose the word.'
+    } else if (type === 'phonics_image_initial_letter') {
+      spoken = 'Choose the beginning letter.'
+    } else if (type === 'phonics_image_vowel') {
+      spoken = 'Choose the missing vowel.'
+    } else if (type === 'phonics_image_blend') {
+      spoken = 'Choose the beginning blend.'
+    } else if (type.startsWith('phonics_')) {
+      spoken = currentQuestion.phonicsWord ?? ''
+    } else {
+      spoken = currentQuestion.item.english
+    }
+
+    if (spoken.trim()) speakEnglish(spoken)
+  }
+
   function chooseAnswer(answer: string) {
     if (
       !currentQuestion ||
@@ -1783,7 +1823,7 @@ export default function Practice() {
     <main className="mx-auto max-w-3xl p-6">
       <div className="sticky top-0 z-20 mb-4 rounded-xl border border-slate-200 bg-white/95 px-4 py-2 shadow-sm backdrop-blur">
         <label className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">🔊 語速
-          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate); speakEnglish(currentQuestion.phonicsWord ?? currentQuestion.item.english) }}>
+          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate); replayCurrentQuestion() }}>
             <option value={0.5}>🐢 慢速 0.5×</option><option value={0.75}>學習 0.75×</option><option value={1}>正常 1.0×</option>
           </select>
         </label>
