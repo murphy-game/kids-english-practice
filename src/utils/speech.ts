@@ -1,14 +1,14 @@
 const KEY = 'kids-english-speech-rate'
-let currentRate = 0.8
+let currentRate = 0.75
 export function getSpeechRate(): number {
   if (typeof window !== 'undefined') {
     const stored = Number(window.localStorage.getItem(KEY))
-    if ([0.7, 0.8, 1].includes(stored)) currentRate = stored
+    if ([0.5, 0.75, 1].includes(stored)) currentRate = stored
   }
   return currentRate
 }
 export function setSpeechRate(rate: number): void {
-  if (![0.7, 0.8, 1].includes(rate)) return
+  if (![0.5, 0.75, 1].includes(rate)) return
   currentRate = rate
   if (typeof window !== 'undefined') window.localStorage.setItem(KEY, String(rate))
 }
