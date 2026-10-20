@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadAppData } from '../services/dataLoader'
+import { getSpeechRate, setSpeechRate, speakEnglish } from '../utils/speech'
 
 import type { Lesson, ContentItem, LessonPractice } from '../types'
 
@@ -8,12 +9,7 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
 type AbcMode = 'learn' | 'uppercase' | 'lowercase' | 'listen'
 
 function sayLetter(letter: string) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
-  window.speechSynthesis.cancel()
-  const voice = new SpeechSynthesisUtterance(letter.toUpperCase())
-  voice.lang = 'en-US'
-  voice.rate = 0.75
-  window.speechSynthesis.speak(voice)
+  speakEnglish(letter.toUpperCase())
 }
 
 function AlphabetPlay({ onBack }: { onBack: () => void }) {
@@ -22,6 +18,7 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
   const [answer, setAnswer] = useState<string | null>(null)
   const [score, setScore] = useState(0)
   const [finished, setFinished] = useState(false)
+  const [speechRate, updateSpeechRate] = useState(getSpeechRate)
   const target = ALPHABET[index]
   const options = [target, ALPHABET[(index + 7) % 26], ALPHABET[(index + 15) % 26], ALPHABET[(index + 21) % 26]]
     .sort((a, b) => ((a.charCodeAt(0) * 17 + index * 11) % 29) - ((b.charCodeAt(0) * 17 + index * 11) % 29))
@@ -51,6 +48,13 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
         <div className="text-5xl">🔤</div>
         <h1 className="mt-2 text-3xl font-bold text-slate-800">ABC 字母樂園</h1>
         <p className="mt-2 text-slate-500">A–Z Alphabet Practice · 獨立練習</p>
+      </div>
+      <div className="sticky top-0 z-20 mb-4 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+        <label className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-700">🔊 語速
+          <select aria-label="語速" className="rounded-lg border border-slate-300 bg-white px-3 py-2" value={speechRate} onChange={(e) => { const rate = Number(e.target.value); setSpeechRate(rate); updateSpeechRate(rate) }}>
+            <option value={0.7}>🐢 慢速 0.7×</option><option value={0.8}>稍慢 0.8×</option><option value={1}>正常 1.0×</option>
+          </select>
+        </label>
       </div>
       <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {([['learn', '認識字母'], ['uppercase', '找大寫'], ['lowercase', '找小寫'], ['listen', '聽音選字母']] as const).map(([key, label]) => (
@@ -90,7 +94,7 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
               const isCorrect = letter === target
               const isPicked = answer === letter
               return (
-                <button key={letter} type="button" disabled={answer !== null} onClick={() => { setAnswer(letter); if (isCorrect) setScore((n) => n + 1) }}
+                <button key={letter} type="button" disabled={answer !== null} onClick={() => { setAnswer(letter); if (isCorrect) { setScore((n) => n + 1); sayLetter(target) } }}
                   className={`rounded-2xl border-2 p-5 text-4xl font-bold ${answer !== null && isCorrect ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : isPicked ? 'border-red-400 bg-red-50 text-red-600' : 'border-slate-200 bg-white text-slate-800'}`}>
                   {showLower ? letter.toLowerCase() : letter}
                 </button>
@@ -111,6 +115,7 @@ export default function Home() {
   const navigate = useNavigate()
 
   const [showAlphabet, setShowAlphabet] = useState(false)
+  const [selectedCourse, setSelectedCourse] = useState<'TU' | 'BR' | null>(null)
 
   const [content, setContent] = useState<ContentItem[]>([])
   const [lessonPractice, setLessonPractice] = useState<LessonPractice[]>([])
@@ -426,6 +431,30 @@ export default function Home() {
     )
   }
 
+  // Choose a course before showing its lessons.
+  if (!selectedCourse) {
+    return (
+      <main className="mx-auto max-w-5xl p-6">
+        <section className="mb-8 text-center">
+          <div className="text-5xl">🌱</div>
+          <h1 className="mt-3 text-3xl font-bold text-slate-800">Kids English Practice</h1>
+          <p className="mt-2 text-slate-500">選擇學習區域</p>
+        </section>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <button type="button" onClick={() => setShowAlphabet(true)} className="rounded-3xl border-2 border-violet-200 bg-violet-50 p-6 text-left shadow-sm hover:shadow-md">
+            <div className="text-5xl">🔤</div><h2 className="mt-4 text-2xl font-bold">ABC 字母樂園</h2><p className="mt-2 text-slate-600">A–Z · 大小寫 · 聽音選字母</p><p className="mt-5 font-bold text-violet-700">開始練習 →</p>
+          </button>
+          <button type="button" onClick={() => setSelectedCourse('TU')} className="rounded-3xl border-2 border-sky-200 bg-sky-50 p-6 text-left shadow-sm hover:shadow-md">
+            <div className="text-5xl">📘</div><h2 className="mt-4 text-2xl font-bold">Thumbs Up</h2><p className="mt-2 text-slate-600">L1–L20 · 選擇課次</p><p className="mt-5 font-bold text-sky-700">選擇課程 →</p>
+          </button>
+          <button type="button" onClick={() => setSelectedCourse('BR')} className="rounded-3xl border-2 border-emerald-200 bg-emerald-50 p-6 text-left shadow-sm hover:shadow-md">
+            <div className="text-5xl">📗</div><h2 className="mt-4 text-2xl font-bold">The Best Reading</h2><p className="mt-2 text-slate-600">L1–L12 · 選擇課次</p><p className="mt-5 font-bold text-emerald-700">選擇課程 →</p>
+          </button>
+        </div>
+      </main>
+    )
+  }
+
   /*
    * Lesson List
    */
@@ -446,21 +475,14 @@ export default function Home() {
         </p>
       </section>
 
-      <section className="mb-8">
-        <button type="button" onClick={() => setShowAlphabet(true)} className="w-full rounded-3xl border-2 border-violet-200 bg-violet-50 p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md">
-          <div className="text-4xl">🔤</div>
-          <h2 className="mt-2 text-2xl font-bold text-slate-800">ABC 字母樂園</h2>
-          <p className="mt-2 text-slate-600">A–Z · 大小寫辨識 · 聽音選字母</p>
-          <div className="mt-4 font-semibold text-violet-700">開始練習 →</div>
-        </button>
-      </section>
+      <button type="button" onClick={() => setSelectedCourse(null)} className="mb-5 font-semibold text-slate-600 hover:text-slate-900">← 返回三大分類</button>
       <section>
         <h2 className="mb-4 text-xl font-bold">
-          Choose a lesson
+          {selectedCourse === 'TU' ? 'Thumbs Up · 選擇課次' : 'The Best Reading · 選擇課次'}
         </h2>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {lessons.map(
+          {lessons.filter((lesson) => selectedCourse === 'TU' ? lesson.lesson_id.startsWith('TU-') : lesson.lesson_id.startsWith('BR-')).map(
             (lesson) => (
               <button
                 key={
