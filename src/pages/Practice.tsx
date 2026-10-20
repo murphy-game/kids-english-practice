@@ -1236,7 +1236,9 @@ function speakEnglish(text: string) {
   window.speechSynthesis.cancel()
 
   const utterance =
-    new SpeechSynthesisUtterance(text)
+    new SpeechSynthesisUtterance(
+      text.replace(/\s*\/\s*/g, ' . ' ).replace(/\s+/g, ' ').trim(),
+    )
 
   utterance.lang = 'en-US'
   utterance.rate = 0.85
