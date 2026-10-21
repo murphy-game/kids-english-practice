@@ -6,6 +6,14 @@ import { getSpeechRate, setSpeechRate, speakEnglish } from '../utils/speech'
 import type { Lesson, ContentItem, LessonPractice } from '../types'
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
+function shuffledAlphabet(): string[] {
+  const letters = [...ALPHABET]
+  for (let i = letters.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[letters[i], letters[j]] = [letters[j], letters[i]]
+  }
+  return letters
+}
 type AbcMode = 'learn' | 'uppercase' | 'lowercase' | 'listen'
 
 function sayLetter(letter: string) {
@@ -15,11 +23,12 @@ function sayLetter(letter: string) {
 function AlphabetPlay({ onBack }: { onBack: () => void }) {
   const [mode, setMode] = useState<AbcMode>('learn')
   const [index, setIndex] = useState(0)
+  const [questionOrder, setQuestionOrder] = useState<string[]>(shuffledAlphabet)
   const [answer, setAnswer] = useState<string | null>(null)
   const [score, setScore] = useState(0)
   const [finished, setFinished] = useState(false)
   const [speechRate, updateSpeechRate] = useState(getSpeechRate)
-  const target = ALPHABET[index]
+  const target = questionOrder[index]
   const lastLearnLetter = useRef('A')
   function playLearnLetter(letter: string) {
     lastLearnLetter.current = letter
@@ -32,8 +41,16 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
     .sort((a, b) => ((a.charCodeAt(0) * 17 + index * 11) % 29) - ((b.charCodeAt(0) * 17 + index * 11) % 29))
   const showLower = mode === 'lowercase'
 
+  useEffect(() => {
+    if (mode !== 'listen' || finished || answer !== null) return
+    // A short delay allows the question screen to render before playback.
+    const playback = window.setTimeout(() => sayLetter(target), 180)
+    return () => window.clearTimeout(playback)
+  }, [mode, index, finished, target, answer])
+
   function changeMode(next: AbcMode) {
     setMode(next)
+    setQuestionOrder(shuffledAlphabet())
     setIndex(0)
     setAnswer(null)
     setScore(0)
@@ -165,6 +182,16 @@ export default function Home() {
         setLessons(
           activeLessons,
         )
+        const returnParams = new URLSearchParams(window.location.search)
+        const returnLesson = returnParams.get('lesson')
+        const returnCourse = returnParams.get('course')
+        if (returnCourse === 'TU' || returnCourse === 'BR') {
+          setSelectedCourse(returnCourse)
+          if (returnLesson) {
+            const matched = activeLessons.find(item => item.lesson_id === returnLesson)
+            if (matched) setSelectedLesson(matched)
+          }
+        }
         setContent(data.content)
         setLessonPractice(data.lessonPractice)
       } catch (err) {

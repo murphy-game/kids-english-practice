@@ -1776,7 +1776,11 @@ export default function Practice() {
   }
 
   function goBack() {
-    navigate('/')
+    const course = lessonIds[0]?.startsWith('BR-') ? 'BR' : lessonIds[0]?.startsWith('TU-') ? 'TU' : ''
+    const backParams = new URLSearchParams()
+    if (course) backParams.set('course', course)
+    if (lessonIds.length === 1) backParams.set('lesson', lessonIds[0])
+    navigate(backParams.size ? `/?${backParams.toString()}` : '/')
   }
 
   if (loading) {
