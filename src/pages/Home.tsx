@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { loadAppData } from '../services/dataLoader'
 import { getSpeechRate, setSpeechRate, speakEnglish } from '../utils/speech'
 
@@ -138,10 +138,15 @@ function AlphabetPlay({ onBack }: { onBack: () => void }) {
 
 export default function Home() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnParams = new URLSearchParams(location.search)
+  const returnState = (location.state ?? {}) as { returnCourse?: string; returnLesson?: string; returnLessons?: string[] }
+  const initialCourse = returnParams.get('course') ?? returnState.returnCourse
+  const initialLesson = returnParams.get('lesson') ?? returnState.returnLesson
 
   const [showAlphabet, setShowAlphabet] = useState(false)
-  const [selectedCourse, setSelectedCourse] = useState<'TU' | 'BR' | null>(null)
-  const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([])
+  const [selectedCourse, setSelectedCourse] = useState<'TU' | 'BR' | null>(initialCourse === 'TU' || initialCourse === 'BR' ? initialCourse : null)
+  const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>(returnState.returnLessons ?? [])
 
   const [content, setContent] = useState<ContentItem[]>([])
   const [lessonPractice, setLessonPractice] = useState<LessonPractice[]>([])
@@ -182,9 +187,8 @@ export default function Home() {
         setLessons(
           activeLessons,
         )
-        const returnParams = new URLSearchParams(window.location.search)
-        const returnLesson = returnParams.get('lesson')
-        const returnCourse = returnParams.get('course')
+        const returnLesson = initialLesson
+        const returnCourse = initialCourse
         if (returnCourse === 'TU' || returnCourse === 'BR') {
           setSelectedCourse(returnCourse)
           if (returnLesson) {

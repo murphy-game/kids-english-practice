@@ -1338,7 +1338,7 @@ function Visual({
           size === 'large'
             ? 'h-52 w-52 object-contain'
             : size === 'small'
-              ? 'h-28 w-28 object-contain'
+              ? 'h-28 w-full max-w-[260px] object-contain sm:h-40 lg:h-48'
               : 'h-16 w-16 object-contain'
         }
       />
@@ -1780,7 +1780,7 @@ export default function Practice() {
     const backParams = new URLSearchParams()
     if (course) backParams.set('course', course)
     if (lessonIds.length === 1) backParams.set('lesson', lessonIds[0])
-    navigate(backParams.size ? `/?${backParams.toString()}` : '/')
+    navigate(backParams.size ? `/?${backParams.toString()}` : '/', { state: { returnCourse: course, returnLesson: lessonIds.length === 1 ? lessonIds[0] : null, returnLessons: lessonIds.length > 1 ? lessonIds : [] } })
   }
 
   if (loading) {
@@ -1913,7 +1913,7 @@ export default function Practice() {
         </div>
       </section>
 
-      <section className="rounded-3xl bg-white p-8 shadow-sm">
+      <section className="rounded-3xl bg-white p-4 shadow-sm sm:p-8">
         {currentQuestion.type === 'comparison_ab' && (
           <>
             <p className="text-center text-lg font-bold text-slate-600">
@@ -1976,13 +1976,13 @@ export default function Practice() {
               Listen and choose.
             </p>
 
-            <div className="my-8 text-center">
+            <div className="my-4 text-center sm:my-7">
               <button
                 type="button"
                 onClick={() =>
                   speakEnglish(currentQuestion.item.english)
                 }
-                className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
+                className="rounded-full bg-sky-100 px-5 py-4 text-3xl shadow-sm transition hover:scale-105 sm:px-6 sm:py-5 sm:text-4xl"
               >
                 🔊
               </button>
@@ -2023,13 +2023,13 @@ export default function Practice() {
               Listen and choose the picture.
             </p>
 
-            <div className="my-8 text-center">
+            <div className="my-4 text-center sm:my-7">
               <button
                 type="button"
                 onClick={() =>
                   speakEnglish(currentQuestion.item.english)
                 }
-                className="rounded-full bg-sky-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
+                className="rounded-full bg-sky-100 px-5 py-4 text-3xl shadow-sm transition hover:scale-105 sm:px-6 sm:py-5 sm:text-4xl"
               >
                 🔊
               </button>
@@ -2193,7 +2193,7 @@ export default function Practice() {
               Listen and choose the sentence.
             </p>
 
-            <div className="my-8 text-center">
+            <div className="my-4 text-center sm:my-7">
               <button
                 type="button"
                 onClick={() =>
@@ -2484,7 +2484,7 @@ export default function Practice() {
 
         {!isSpellQuestion &&
           (usesVisualOptions ? (
-            <div className="mt-8 grid grid-cols-2 gap-4">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:mt-7 sm:gap-4">
               {currentQuestion.visualOptions?.map((option) => {
                 const isCorrect =
                   option.english === currentQuestion.correctAnswer
@@ -2494,7 +2494,7 @@ export default function Practice() {
                   wrongAnswers.includes(option.english)
 
                 let className =
-                  'flex min-h-40 items-center justify-center rounded-2xl border-2 p-4 transition '
+                  'flex min-h-36 items-center justify-center rounded-2xl border-2 p-2 transition sm:min-h-48 sm:p-3 '
 
                 if (isSelected && isCorrect) {
                   className +=
