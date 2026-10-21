@@ -1317,11 +1317,9 @@ function Visual({
     return (
       <span
         className={
-          size === 'large'
-            ? 'text-8xl'
-            : size === 'small'
-              ? 'text-6xl'
-              : 'text-5xl'
+          size === 'small'
+            ? 'text-6xl'
+            : 'text-8xl sm:text-9xl'
         }
       >
         {asset.emoji}
@@ -1335,11 +1333,9 @@ function Visual({
         src={getImageUrl(asset)}
         alt=""
         className={
-          size === 'large'
-            ? 'h-52 w-52 object-contain'
-            : size === 'small'
-              ? 'h-28 w-full max-w-[260px] object-contain sm:h-40 lg:h-48'
-              : 'h-16 w-16 object-contain'
+          size === 'small'
+            ? 'h-28 w-full max-w-[260px] object-contain sm:h-40 lg:h-48'
+            : 'mx-auto h-auto max-h-[260px] w-full max-w-[340px] object-contain sm:max-h-[320px] sm:max-w-[400px]'
         }
       />
     )
@@ -2066,18 +2062,28 @@ export default function Practice() {
 
         {currentQuestion.type === 'spell_word' && (
           <>
-            <div className="flex flex-wrap items-center justify-center gap-3 text-center text-2xl font-bold text-slate-700 sm:text-3xl">
-              <span>How do you spell</span>
+            <div className="text-center">
+              <p className="text-xl font-bold text-slate-700 sm:text-2xl">
+                How do you spell this word?
+              </p>
               {currentQuestion.asset && (
-                <Visual
-                  asset={currentQuestion.asset}
-                  size="inline"
-                />
+                <div className="mt-4 flex items-center justify-center">
+                  <div className="flex h-64 w-full max-w-[340px] items-center justify-center rounded-2xl bg-slate-50 p-2 sm:h-80 sm:max-w-[400px]">
+                    {currentQuestion.asset.display_type === 'image' ? (
+                      <img
+                        src={getImageUrl(currentQuestion.asset)}
+                        alt="Word to spell"
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <Visual asset={currentQuestion.asset} size="large" />
+                    )}
+                  </div>
+                </div>
               )}
-              <span>?</span>
             </div>
 
-            <div className="mt-4 text-center">
+            <div className="mt-3 text-center">
               <button
                 type="button"
                 onClick={() =>
@@ -2085,7 +2091,7 @@ export default function Practice() {
                     `How do you spell ${currentQuestion.item.english}?`,
                   )
                 }
-                className="rounded-full bg-amber-50 px-5 py-4 text-3xl transition hover:bg-amber-100"
+                className="rounded-full bg-amber-50 px-3 py-2 text-xl transition hover:bg-amber-100"
               >
                 🔊
               </button>
@@ -2094,7 +2100,7 @@ export default function Practice() {
               </p>
             </div>
 
-            <div className="mt-8 flex min-h-16 flex-wrap items-center justify-center gap-2">
+            <div className="mt-5 flex min-h-16 flex-wrap items-center justify-center gap-2">
               {currentQuestion.correctAnswer
                 .split('')
                 .map((_, index) => (
