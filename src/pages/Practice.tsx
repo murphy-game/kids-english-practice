@@ -1912,38 +1912,22 @@ export default function Practice() {
       <section className="rounded-3xl bg-white p-4 shadow-sm sm:p-8">
         {currentQuestion.type === 'comparison_ab' && (
           <>
-            <p className="text-center text-lg font-bold text-slate-600">
-              Choose A or B.
-            </p>
-            <p className="mt-3 text-center text-3xl font-bold text-slate-800">
-              {currentQuestion.item.english}
-            </p>
-            <button
-              type="button"
-              onClick={() => speakEnglish(currentQuestion.item.english)}
-              className="mx-auto mt-3 block rounded-full bg-sky-50 px-4 py-3 text-2xl"
-            >
-              🔊
-            </button>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.item.english)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xl hover:bg-sky-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose A or B.</p>
+            </div>
+            <p className="mt-3 text-center text-3xl font-bold text-slate-800">{currentQuestion.item.english}</p>
             {currentQuestion.asset && (
-              <div className="mt-5 flex justify-center">
-                <img
-                  src={getImageUrl(currentQuestion.asset)}
-                  alt="A and B comparison"
-                  className="max-h-72 w-full max-w-2xl object-contain"
-                />
-              </div>
+              <div className="mt-5 flex justify-center"><img src={getImageUrl(currentQuestion.asset)} alt="A and B comparison" className="max-h-72 w-full max-w-2xl object-contain" /></div>
             )}
-            <p className="mt-3 text-center text-sm text-slate-500">
-              A = left · B = right
-            </p>
+            <p className="mt-3 text-center text-sm text-slate-500">A = left · B = right</p>
           </>
         )}
 
         {currentQuestion.type === 'image_to_word' && (
           <>
             <div className="flex items-center justify-center gap-2 text-center">
-              <button type="button" aria-label="Listen to the instruction" onClick={() => speakEnglish('Choose the word.')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xl hover:bg-sky-100">🔊</button>
+              <button type="button" aria-label="Listen to the word" onClick={() => speakEnglish(currentQuestion.item.english)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xl hover:bg-sky-100">🔊</button>
               <p className="text-lg font-bold tracking-wide text-slate-600">Choose the word.</p>
             </div>
             <div className="mt-3 flex justify-center sm:mt-5">
@@ -1963,25 +1947,11 @@ export default function Practice() {
 
         {currentQuestion.type === 'word_to_image' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the picture.
-            </p>
-
-            <h1 className="mt-4 text-center text-5xl font-bold text-slate-800">
-              {currentQuestion.item.english}
-            </h1>
-
-            <div className="mt-3 text-center">
-              <button
-                type="button"
-                onClick={() =>
-                  speakEnglish(currentQuestion.item.english)
-                }
-                className="rounded-full px-4 py-2 text-2xl hover:bg-slate-100"
-              >
-                🔊
-              </button>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.item.english)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xl hover:bg-sky-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the picture.</p>
             </div>
+            <h1 className="mt-4 text-center text-5xl font-bold text-slate-800">{currentQuestion.item.english}</h1>
           </>
         )}
 
@@ -1996,25 +1966,11 @@ export default function Practice() {
 
         {currentQuestion.type === 'missing_letter' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the missing letter.
-            </p>
-
-            <div className="mt-5 text-center">
-              <div className="text-5xl font-bold tracking-[0.18em] text-slate-800">
-                {currentQuestion.maskedWord}
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  speakEnglish(currentQuestion.item.english)
-                }
-                className="mt-4 rounded-full bg-sky-50 px-4 py-3 text-3xl hover:bg-sky-100"
-              >
-                🔊
-              </button>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.item.english)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xl hover:bg-sky-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the missing letter.</p>
             </div>
+            <div className="mt-5 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">{currentQuestion.maskedWord}</div>
           </>
         )}
 
@@ -2139,78 +2095,48 @@ export default function Practice() {
 
         {currentQuestion.type === 'sentence_fill_blank' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the missing word.
-            </p>
-
-            <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
-              {currentQuestion.sentencePrompt}
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish('Choose the missing word.')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xl hover:bg-violet-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the missing word.</p>
             </div>
-
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish('Choose the missing word.')
-              }
-              className="mx-auto mt-5 block rounded-full bg-violet-50 px-4 py-3 text-3xl hover:bg-violet-100"
-            >
-              🔊
-            </button>
+            <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">{currentQuestion.sentencePrompt}</div>
           </>
         )}
 
         {currentQuestion.type === 'phonics_image_initial_letter' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the beginning letter.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish('Choose the beginning letter.')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the beginning letter.</p>
+            </div>
             <div className="mt-6 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} />
               )}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish('Choose the beginning letter.')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
-            >
-              🔊
-            </button>
           </>
         )}
 
         {currentQuestion.type === 'phonics_audio_initial_letter' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose the beginning letter.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Listen and choose the beginning letter.</p>
+            </div>
             <div className="mt-6 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} size="inline" />
               )}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-100 px-6 py-5 text-4xl hover:bg-indigo-200"
-            >
-              🔊
-            </button>
-            <p className="mt-2 text-center text-sm text-slate-400">
-              Tap to listen again
-            </p>
           </>
         )}
 
         {currentQuestion.type === 'phonics_missing_initial_letter' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the missing beginning letter.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the missing beginning letter.</p>
+            </div>
             <div className="mt-5 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} size="inline" />
@@ -2219,23 +2145,15 @@ export default function Practice() {
             <div className="mt-5 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
               {currentQuestion.maskedWord}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
-            >
-              🔊
-            </button>
           </>
         )}
 
         {currentQuestion.type === 'phonics_letter_case_match' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Match the capital and small letter.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsPrompt ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Match the capital and small letter.</p>
+            </div>
             <div className="mt-6 text-center text-6xl font-bold text-slate-800">
               {currentQuestion.phonicsPrompt}
             </div>
@@ -2244,34 +2162,24 @@ export default function Practice() {
 
         {currentQuestion.type === 'phonics_audio_vowel' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose the vowel.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Listen and choose the vowel.</p>
+            </div>
             <div className="mt-5 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} size="inline" />
               )}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-100 px-6 py-5 text-4xl hover:bg-indigo-200"
-            >
-              🔊
-            </button>
-            <p className="mt-2 text-center text-sm text-slate-400">
-              Tap to listen again
-            </p>
           </>
         )}
 
         {currentQuestion.type === 'phonics_missing_vowel' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the missing vowel.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the missing vowel.</p>
+            </div>
             <div className="mt-5 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} size="inline" />
@@ -2280,23 +2188,15 @@ export default function Practice() {
             <div className="mt-5 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
               {currentQuestion.maskedWord}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
-            >
-              🔊
-            </button>
           </>
         )}
 
         {currentQuestion.type === 'phonics_cvc_build_word' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Put the sounds together. Choose the word.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Put the sounds together. Choose the word.</p>
+            </div>
             <div className="mt-5 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} size="inline" />
@@ -2305,70 +2205,43 @@ export default function Practice() {
             <div className="mt-6 text-center text-4xl font-bold tracking-[0.18em] text-slate-800">
               {currentQuestion.phonicsPrompt}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
-            >
-              🔊
-            </button>
           </>
         )}
 
         {currentQuestion.type === 'phonics_image_blend' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the beginning blend.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish('Choose the beginning blend.')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the beginning blend.</p>
+            </div>
             <div className="mt-6 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} />
               )}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish('Choose the beginning blend.')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
-            >
-              🔊
-            </button>
           </>
         )}
 
         {currentQuestion.type === 'phonics_audio_blend' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose the beginning blend.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Listen and choose the beginning blend.</p>
+            </div>
             <div className="mt-5 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} size="inline" />
               )}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-100 px-6 py-5 text-4xl hover:bg-indigo-200"
-            >
-              🔊
-            </button>
-            <p className="mt-2 text-center text-sm text-slate-400">
-              Tap to listen again
-            </p>
           </>
         )}
 
         {currentQuestion.type === 'phonics_missing_blend' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the missing beginning blend.
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the missing beginning blend.</p>
+            </div>
             <div className="mt-5 flex justify-center">
               {currentQuestion.asset && (
                 <Visual asset={currentQuestion.asset} size="inline" />
@@ -2377,35 +2250,18 @@ export default function Practice() {
             <div className="mt-5 text-center text-5xl font-bold tracking-[0.18em] text-slate-800">
               {currentQuestion.maskedWord}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
-            >
-              🔊
-            </button>
           </>
         )}
 
         {currentQuestion.type === 'phonics_same_initial_blend' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Which word begins with the same sound?
-            </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.phonicsWord ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xl hover:bg-indigo-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Which word begins with the same sound?</p>
+            </div>
             <div className="mt-6 text-center text-4xl font-bold text-slate-800">
               {currentQuestion.phonicsWord}
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(currentQuestion.phonicsWord ?? '')
-              }
-              className="mx-auto mt-4 block rounded-full bg-indigo-50 px-4 py-3 text-3xl hover:bg-indigo-100"
-            >
-              🔊
-            </button>
           </>
         )}
 
