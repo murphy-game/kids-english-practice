@@ -691,11 +691,12 @@ function buildSentenceQuestions(
     )
 
   if (allowedTypes.length === 0) {
-    allowedTypes.push(
-      'choose_response',
-      'listen_and_choose',
-      'fill_blank',
-    )
+    allowedTypes.push('choose_response', 'fill_blank')
+  }
+  // Keep listening comprehension available even when response questions
+  // have been excluded for lack of visual context.
+  if (!allowedTypes.includes('listen_and_choose')) {
+    allowedTypes.push('listen_and_choose')
   }
 
   /*
@@ -786,16 +787,16 @@ function buildSentenceQuestions(
       allowedTypes.includes('listen_and_choose') &&
       !usedEnglish.has(item.english.trim())
     ) {
-      variants.push({
-        id: `${item.item_id}-sentence-listen`,
-        type: 'sentence_listen_choose',
-        item,
-        correctAnswer: item.english,
-        textOptions: createSentenceOptions(
+      const options = createSentenceOptions(item, allSentences)
+      if (options.length >= 2) {
+        variants.push({
+          id: `${item.item_id}-sentence-listen`,
+          type: 'sentence_listen_choose',
           item,
-          allSentences,
-        ),
-      })
+          correctAnswer: item.english,
+          textOptions: options,
+        })
+      }
     }
 
     if (variants.length === 0) continue
@@ -1821,7 +1822,17 @@ export default function Practice() {
     )
   }
 
-  if (!currentQuestion) return null
+  if (!currentQuestion) {
+    return (
+      <main className="mx-auto max-w-3xl p-6">
+        <section className="rounded-2xl bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-bold text-slate-800">No available sentence questions</h1>
+          <p className="mt-2 text-slate-600">This lesson has no suitable questions for this practice. Please choose another lesson.</p>
+          <button type="button" onClick={goBack} className="mt-5 rounded-xl bg-slate-800 px-4 py-2 font-semibold text-white">Back to lessons</button>
+        </section>
+      </main>
+    )
+  }
 
   const progress =
     ((currentIndex + 1) / questions.length) * 100
