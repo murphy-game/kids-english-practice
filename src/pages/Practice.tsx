@@ -26,6 +26,7 @@ type QuestionType =
   | 'sentence_listen_choose'
   | 'sentence_fill_blank'
   | 'sentence_choose_response'
+  | 'sentence_picture_response'
   | 'phonics_image_initial_letter'
   | 'phonics_audio_initial_letter'
   | 'phonics_missing_initial_letter'
@@ -676,11 +677,30 @@ function buildVocabularyQuestions(
   })
 }
 
+function getPictureForResponse(response: string, assets: Asset[]): Asset | undefined {
+  // Only accept a simple, explicit object name and an approved image with
+  // an exactly matching filename. Never guess from a loosely related image.
+  const match = response.trim().match(/^It is (?:a|an) ([a-z]+)\.$/i)
+  if (!match) return undefined
+  const noun = match[1].toLowerCase()
+  return assets.find(asset =>
+    asset.display_type === 'image' &&
+    asset.status === 'approved' &&
+    asset.image_file.trim().toLowerCase() === `${noun}.png`
+  )
+}
+
+function sentenceIdentity(item: ContentItem): string {
+  const text = item.prompt.trim() || item.english.trim()
+  return text.toLowerCase().replace(/[.!?]+$/g, '').replace(/\s+/g, ' ')
+}
+
 function buildSentenceQuestions(
   lessonSentences: ContentItem[],
   allSentences: ContentItem[],
   recommendedTypes: string[],
   targetCount = 8,
+  assets: Asset[] = [],
 ): Question[] {
   const allowedTypes =
     recommendedTypes.filter(
@@ -707,6 +727,7 @@ function buildSentenceQuestions(
   const result: Question[] = []
   const shuffledItems = shuffle(lessonSentences)
   const usedPrompts = new Set<string>()
+  const usedIdentities = new Set<string>()
   const usedEnglish = new Set<string>()
 
   // A text-only response question must have one unambiguous answer.
@@ -729,6 +750,8 @@ function buildSentenceQuestions(
     if (result.length >= targetCount) break
 
     const item = shuffledItems[index]
+    const identity = sentenceIdentity(item)
+    if (usedIdentities.has(identity)) continue
     const variants: Question[] = []
 
     if (
@@ -756,6 +779,30 @@ function buildSentenceQuestions(
           textOptions: options,
           sentencePrompt: prompt,
         })
+      }
+    }
+
+    // Visual identification is fair only when the answer has a verified image.
+    // The question and the picture must refer to the same object.
+    if (/^what is (it|this|that)\?$/i.test(item.prompt.trim()) && item.response.trim()) {
+      const picture = getPictureForResponse(item.response, assets)
+      if (picture) {
+        const alternatives = shuffle([...new Set(
+          allSentences.map(row => row.response.trim()).filter(answer =>
+            answer !== item.response.trim() && Boolean(getPictureForResponse(answer, assets))
+          )
+        )]).slice(0, 3)
+        if (alternatives.length === 3) {
+          variants.push({
+            id: `${item.item_id}-sentence-picture`,
+            type: 'sentence_picture_response',
+            item,
+            asset: picture,
+            correctAnswer: item.response.trim(),
+            textOptions: shuffle([item.response.trim(), ...alternatives]),
+            sentencePrompt: item.prompt.trim(),
+          })
+        }
       }
     }
 
@@ -805,6 +852,7 @@ function buildSentenceQuestions(
       allowedTypes[index % allowedTypes.length]
 
     const picked =
+      variants.find(question => question.type === 'sentence_picture_response') ??
       variants.find((question) => {
         if (preferredType === 'choose_response') {
           return question.type === 'sentence_choose_response'
@@ -816,6 +864,7 @@ function buildSentenceQuestions(
       }) ?? variants[0]
 
     result.push(picked)
+    usedIdentities.add(identity)
     usedEnglish.add(item.english.trim())
     if (item.prompt.trim()) {
       usedPrompts.add(item.prompt.trim())
@@ -1307,6 +1356,8 @@ export default function Practice() {
     new URLSearchParams(location.search)
 
   const lessonId = params.get('lesson') ?? ''
+  const lessonIds = (params.get('lessons') ?? lessonId).split(',').map(value => value.trim()).filter(Boolean)
+  const lessonKey = lessonIds.join(',')
   const rawMode = params.get('mode') ?? 'vocab'
 
   const mode: PracticeMode =
@@ -1343,18 +1394,9 @@ export default function Practice() {
       try {
         const data = await loadAppData()
 
-        const vocab = getVocabulary(
-          data.content,
-          lessonId,
-        )
-        const sentences = getSentences(
-          data.content,
-          lessonId,
-        )
-        const phonics = getPhonics(
-          data.content,
-          lessonId,
-        )
+        const vocab = data.content.filter(item => lessonIds.includes(item.lesson_id) && getVocabulary([item], item.lesson_id).length > 0)
+        const sentences = data.content.filter(item => lessonIds.includes(item.lesson_id) && item.type === 'sentence' && item.english.trim() !== '')
+        const phonics = data.content.filter(item => lessonIds.includes(item.lesson_id) && item.type === 'phonics' && item.english.trim() !== '')
 
         const allSentences = data.content.filter(
           (item) =>
@@ -1368,11 +1410,7 @@ export default function Practice() {
           'vocab',
         )
 
-        const sentenceTypes = getRecommendedTypes(
-          data.lessonPractice,
-          lessonId,
-          'sentence',
-        )
+        const sentenceTypes = [...new Set(lessonIds.flatMap(id => getRecommendedTypes(data.lessonPractice, id, 'sentence')))]
 
         const phonicsTypes = getRecommendedTypes(
           data.lessonPractice,
@@ -1392,7 +1430,8 @@ export default function Practice() {
               sentences,
               allSentences,
               sentenceTypes,
-              10,
+              lessonIds.length > 1 ? 20 : 10,
+              data.assets,
             ),
           )
           return
@@ -1445,6 +1484,7 @@ export default function Practice() {
               allSentences,
               sentenceTypes,
               8,
+              data.assets,
             )
 
           const phonicsPool =
@@ -1516,7 +1556,7 @@ export default function Practice() {
       }
     }
 
-    if (lessonId) {
+    if (lessonIds.length > 0) {
       load()
     } else {
       setError('Missing lesson id.')
@@ -1531,7 +1571,7 @@ export default function Practice() {
         window.speechSynthesis.cancel()
       }
     }
-  }, [lessonId, mode])
+  }, [lessonKey, mode])
 
   const currentQuestion = useMemo(
     () => questions[currentIndex],
@@ -1597,7 +1637,7 @@ export default function Practice() {
         : type.startsWith('phonics_')
           ? (currentQuestion.phonicsWord ?? currentQuestion.item.english)
           : currentQuestion.correctAnswer
-    } else if (type === 'sentence_choose_response') {
+    } else if (type === 'sentence_choose_response' || type === 'sentence_picture_response') {
       spoken = currentQuestion.sentencePrompt ?? ''
     } else if (type === 'sentence_fill_blank') {
       spoken = 'Choose the missing word.'
@@ -2115,7 +2155,7 @@ export default function Practice() {
           </>
         )}
 
-        {currentQuestion.type === 'sentence_choose_response' && (
+        {(currentQuestion.type === 'sentence_choose_response' || currentQuestion.type === 'sentence_picture_response') && (
           <>
             <p className="text-center text-lg font-bold tracking-wide text-slate-600">
               Choose the best response.
@@ -2124,6 +2164,10 @@ export default function Practice() {
             <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
               {currentQuestion.sentencePrompt}
             </div>
+
+            {currentQuestion.type === 'sentence_picture_response' && currentQuestion.asset && (
+              <div className="mt-5 flex justify-center"><Visual asset={currentQuestion.asset} /></div>
+            )}
 
             <button
               type="button"

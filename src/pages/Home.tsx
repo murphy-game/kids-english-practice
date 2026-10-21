@@ -124,6 +124,7 @@ export default function Home() {
 
   const [showAlphabet, setShowAlphabet] = useState(false)
   const [selectedCourse, setSelectedCourse] = useState<'TU' | 'BR' | null>(null)
+  const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([])
 
   const [content, setContent] = useState<ContentItem[]>([])
   const [lessonPractice, setLessonPractice] = useState<LessonPractice[]>([])
@@ -439,6 +440,12 @@ export default function Home() {
     )
   }
 
+  // Multi-lesson practice is a separate path; single-lesson cards remain intact.
+  function startMultiSentence() {
+    if (!selectedLessonIds.length) return
+    navigate(`/practice?lessons=${encodeURIComponent(selectedLessonIds.join(','))}&mode=sentence`)
+  }
+
   // Choose a course before showing its lessons.
   if (!selectedCourse) {
     return (
@@ -452,10 +459,10 @@ export default function Home() {
           <button type="button" onClick={() => setShowAlphabet(true)} className="rounded-3xl border-2 border-violet-200 bg-violet-50 p-6 text-left shadow-sm hover:shadow-md">
             <div className="text-5xl">🔤</div><h2 className="mt-4 text-2xl font-bold">ABC 字母樂園</h2><p className="mt-2 text-slate-600">A–Z · 大小寫 · 聽音選字母</p><p className="mt-5 font-bold text-violet-700">開始練習 →</p>
           </button>
-          <button type="button" onClick={() => setSelectedCourse('TU')} className="rounded-3xl border-2 border-sky-200 bg-sky-50 p-6 text-left shadow-sm hover:shadow-md">
+          <button type="button" onClick={() => { setSelectedLessonIds([]); setSelectedCourse('TU') }} className="rounded-3xl border-2 border-sky-200 bg-sky-50 p-6 text-left shadow-sm hover:shadow-md">
             <div className="text-5xl">📘</div><h2 className="mt-4 text-2xl font-bold">Thumbs Up</h2><p className="mt-2 text-slate-600">L1–L20 · 選擇課次</p><p className="mt-5 font-bold text-sky-700">選擇課程 →</p>
           </button>
-          <button type="button" onClick={() => setSelectedCourse('BR')} className="rounded-3xl border-2 border-emerald-200 bg-emerald-50 p-6 text-left shadow-sm hover:shadow-md">
+          <button type="button" onClick={() => { setSelectedLessonIds([]); setSelectedCourse('BR') }} className="rounded-3xl border-2 border-emerald-200 bg-emerald-50 p-6 text-left shadow-sm hover:shadow-md">
             <div className="text-5xl">📗</div><h2 className="mt-4 text-2xl font-bold">The Best Reading</h2><p className="mt-2 text-slate-600">L1–L12 · 選擇課次</p><p className="mt-5 font-bold text-emerald-700">選擇課程 →</p>
           </button>
         </div>
@@ -489,9 +496,25 @@ export default function Home() {
           {selectedCourse === 'TU' ? 'Thumbs Up · 選擇課次' : 'The Best Reading · 選擇課次'}
         </h2>
 
+        <div className="mb-5 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+          <h3 className="font-bold text-slate-800">💬 多課句型練習</h3>
+          <p className="mt-1 text-sm text-slate-600">勾選多個 Lesson，混合練習不重複的句型。單課練習仍可點下方課程卡片。</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => setSelectedLessonIds(lessons.filter(l => selectedCourse === 'TU' ? l.lesson_id.startsWith('TU-') : l.lesson_id.startsWith('BR-')).filter(l => content.some(c => c.lesson_id === l.lesson_id && c.type === 'sentence')).map(l => l.lesson_id))} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold">全選有句型的課</button>
+            <button type="button" onClick={() => setSelectedLessonIds([])} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold">清除</button>
+            <button type="button" onClick={startMultiSentence} disabled={!selectedLessonIds.length} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">開始句型練習（{selectedLessonIds.length} 課）→</button>
+          </div>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {lessons.filter((lesson) => selectedCourse === 'TU' ? lesson.lesson_id.startsWith('TU-') : lesson.lesson_id.startsWith('BR-')).map(
             (lesson) => (
+              <div key={lesson.lesson_id} className="relative">
+                <label className="absolute right-3 top-3 z-10 flex cursor-pointer items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-sm font-semibold text-violet-800">
+                  <input type="checkbox" checked={selectedLessonIds.includes(lesson.lesson_id)}
+                    onChange={event => setSelectedLessonIds(ids => event.target.checked ? [...ids, lesson.lesson_id] : ids.filter(id => id !== lesson.lesson_id))}
+                    disabled={!content.some(item => item.lesson_id === lesson.lesson_id && item.type === 'sentence')} />
+                  勾選
+                </label>
               <button
                 key={
                   lesson.lesson_id
@@ -533,6 +556,7 @@ export default function Home() {
                   Open lesson →
                 </div>
               </button>
+              </div>
             ),
           )}
         </div>
