@@ -708,6 +708,22 @@ function buildSentenceQuestions(
   const usedPrompts = new Set<string>()
   const usedEnglish = new Set<string>()
 
+  // A text-only response question must have one unambiguous answer.
+  // Visual/context-dependent prompts need an actual clue in the question UI;
+  // this question renderer currently displays text and audio only.
+  const answersByPrompt = new Map<string, Set<string>>()
+  for (const sentence of lessonSentences) {
+    const prompt = sentence.prompt.trim()
+    const answer = sentence.response.trim()
+    if (!prompt || !answer) continue
+    const answers = answersByPrompt.get(prompt) ?? new Set<string>()
+    answers.add(answer)
+    answersByPrompt.set(prompt, answers)
+  }
+  const needsMissingVisualClue = (prompt: string) =>
+    /^(what is (it|this|that)\?|what (color|number) is it\?|who is (he|she|it)\?|what do you see\?|where is [^?]+\?|how many [^?]+\?)/i.test(prompt.trim())
+
+
   for (let index = 0; index < shuffledItems.length; index += 1) {
     if (result.length >= targetCount) break
 
@@ -717,7 +733,9 @@ function buildSentenceQuestions(
     if (
       allowedTypes.includes('choose_response') &&
       item.prompt.trim() &&
-      item.response.trim()
+      item.response.trim() &&
+      (answersByPrompt.get(item.prompt.trim())?.size ?? 0) === 1 &&
+      !needsMissingVisualClue(item.prompt)
     ) {
       const prompt = item.prompt.trim()
       const options = createResponseOptions(
