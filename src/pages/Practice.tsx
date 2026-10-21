@@ -1590,10 +1590,6 @@ export default function Practice() {
       spoken = 'Choose the word.'
     } else if (type === 'phonics_image_initial_letter') {
       spoken = 'Choose the beginning letter.'
-    } else if (type === 'phonics_image_vowel') {
-      spoken = 'Choose the missing vowel.'
-    } else if (type === 'phonics_image_blend') {
-      spoken = 'Choose the beginning blend.'
     } else if (type.startsWith('phonics_')) {
       spoken = currentQuestion.phonicsWord ?? ''
     } else {
