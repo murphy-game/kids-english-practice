@@ -1942,49 +1942,21 @@ export default function Practice() {
 
         {currentQuestion.type === 'image_to_word' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the word.
-            </p>
-
-            <div className="mt-6 flex justify-center">
-              {currentQuestion.asset && (
-                <Visual asset={currentQuestion.asset} />
-              )}
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen to the instruction" onClick={() => speakEnglish('Choose the word.')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-50 text-xl hover:bg-sky-100">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Choose the word.</p>
             </div>
-
-            <div className="mt-3 text-center">
-              <button
-                type="button"
-                onClick={() =>
-                  speakEnglish('Choose the word.')
-                }
-                className="rounded-full bg-sky-50 px-4 py-3 text-2xl transition hover:bg-sky-100"
-              >
-                🔊
-              </button>
+            <div className="mt-3 flex justify-center sm:mt-5">
+              {currentQuestion.asset && <Visual asset={currentQuestion.asset} />}
             </div>
           </>
         )}
 
         {currentQuestion.type === 'audio_to_word' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose.
-            </p>
-
-            <div className="my-4 text-center sm:my-7">
-              <button
-                type="button"
-                onClick={() =>
-                  speakEnglish(currentQuestion.item.english)
-                }
-                className="rounded-full bg-sky-100 px-5 py-4 text-3xl shadow-sm transition hover:scale-105 sm:px-6 sm:py-5 sm:text-4xl"
-              >
-                🔊
-              </button>
-              <p className="mt-3 text-sm text-slate-400">
-                Tap to listen again
-              </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.item.english)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xl hover:bg-sky-200">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Listen and choose.</p>
             </div>
           </>
         )}
@@ -2015,23 +1987,9 @@ export default function Practice() {
 
         {currentQuestion.type === 'audio_to_image' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose the picture.
-            </p>
-
-            <div className="my-4 text-center sm:my-7">
-              <button
-                type="button"
-                onClick={() =>
-                  speakEnglish(currentQuestion.item.english)
-                }
-                className="rounded-full bg-sky-100 px-5 py-4 text-3xl shadow-sm transition hover:scale-105 sm:px-6 sm:py-5 sm:text-4xl"
-              >
-                🔊
-              </button>
-              <p className="mt-3 text-sm text-slate-400">
-                Tap to listen again
-              </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.item.english)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xl hover:bg-sky-200">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Listen and choose the picture.</p>
             </div>
           </>
         )}
@@ -2063,12 +2021,13 @@ export default function Practice() {
         {currentQuestion.type === 'spell_word' && (
           <>
             <div className="text-center">
-              <p className="text-xl font-bold text-slate-700 sm:text-2xl">
-                How do you spell this word?
-              </p>
+              <div className="flex items-center justify-center gap-2">
+                <button type="button" aria-label="Hear the spelling question" onClick={() => speakEnglish(`How do you spell ${currentQuestion.item.english}?`)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-xl hover:bg-amber-100">🔊</button>
+                <p className="text-xl font-bold text-slate-700 sm:text-2xl">How do you spell this word?</p>
+              </div>
               {currentQuestion.asset && (
                 <div className="mt-4 flex items-center justify-center">
-                  <div className="flex h-64 w-full max-w-[340px] items-center justify-center rounded-2xl bg-slate-50 p-2 sm:h-80 sm:max-w-[400px]">
+                  <div className="flex h-56 w-full max-w-[340px] items-center justify-center rounded-2xl bg-slate-50 p-1 sm:h-80 sm:max-w-[400px]">
                     {currentQuestion.asset.display_type === 'image' ? (
                       <img
                         src={getImageUrl(currentQuestion.asset)}
@@ -2083,22 +2042,7 @@ export default function Practice() {
               )}
             </div>
 
-            <div className="mt-3 text-center">
-              <button
-                type="button"
-                onClick={() =>
-                  speakEnglish(
-                    `How do you spell ${currentQuestion.item.english}?`,
-                  )
-                }
-                className="rounded-full bg-amber-50 px-3 py-2 text-xl transition hover:bg-amber-100"
-              >
-                🔊
-              </button>
-              <p className="mt-2 text-sm text-slate-400">
-                Tap to hear the question again
-              </p>
-            </div>
+
 
             <div className="mt-5 flex min-h-16 flex-wrap items-center justify-center gap-2">
               {currentQuestion.correctAnswer
@@ -2167,9 +2111,10 @@ export default function Practice() {
 
         {(currentQuestion.type === 'sentence_choose_response' || currentQuestion.type === 'sentence_picture_response') && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Choose the best response.
-            </p>
+            <div className="flex items-center justify-center gap-2">
+              <button type="button" aria-label="Hear the question" onClick={() => speakEnglish(currentQuestion.sentencePrompt ?? '')} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xl hover:bg-violet-100">🔊</button>
+              <p className="text-center text-lg font-bold tracking-wide text-slate-600">Choose the best response.</p>
+            </div>
 
             <div className="mt-6 text-center text-3xl font-bold leading-relaxed text-slate-800">
               {currentQuestion.sentencePrompt}
@@ -2179,39 +2124,15 @@ export default function Practice() {
               <div className="mt-5 flex justify-center"><Visual asset={currentQuestion.asset} /></div>
             )}
 
-            <button
-              type="button"
-              onClick={() =>
-                speakEnglish(
-                  currentQuestion.sentencePrompt ?? '',
-                )
-              }
-              className="mx-auto mt-5 block rounded-full bg-violet-50 px-5 py-4 text-3xl transition hover:bg-violet-100"
-            >
-              🔊
-            </button>
+
           </>
         )}
 
         {currentQuestion.type === 'sentence_listen_choose' && (
           <>
-            <p className="text-center text-lg font-bold tracking-wide text-slate-600">
-              Listen and choose the sentence.
-            </p>
-
-            <div className="my-4 text-center sm:my-7">
-              <button
-                type="button"
-                onClick={() =>
-                  speakEnglish(currentQuestion.item.english)
-                }
-                className="rounded-full bg-violet-100 px-8 py-6 text-5xl shadow-sm transition hover:scale-105"
-              >
-                🔊
-              </button>
-              <p className="mt-3 text-sm text-slate-400">
-                Tap to listen again
-              </p>
+            <div className="flex items-center justify-center gap-2 text-center">
+              <button type="button" aria-label="Listen again" onClick={() => speakEnglish(currentQuestion.item.english)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xl hover:bg-violet-200">🔊</button>
+              <p className="text-lg font-bold tracking-wide text-slate-600">Listen and choose the sentence.</p>
             </div>
           </>
         )}
@@ -2535,7 +2456,7 @@ export default function Practice() {
               })}
             </div>
           ) : (
-            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-7 sm:gap-3">
               {currentQuestion.textOptions?.map((option) => {
                 const isCorrect =
                   option === currentQuestion.correctAnswer
@@ -2544,7 +2465,7 @@ export default function Practice() {
                   wrongAnswers.includes(option)
 
                 let className =
-                  'rounded-2xl border-2 p-4 text-lg font-semibold transition '
+                  'min-h-16 rounded-2xl border-2 p-2 text-base font-semibold leading-snug transition sm:p-4 sm:text-lg '
 
                 if (isSelected && isCorrect) {
                   className +=
